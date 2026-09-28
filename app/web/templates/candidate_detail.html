@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "partials/status.html" import badge %}
+{% from "partials/review_forms.html" import review_forms %}
+{% from "partials/media.html" import video_player, audio_player %}
+{% from "partials/pipeline.html" import pipeline_view %}
+{% block title %}{{ candidate.title }} · Industrial Content Factory{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div><p class="eyebrow">Candidate #{{ candidate.id }} · {{ candidate.provider }}</p><h1>{{ candidate.title }}</h1><p>{{ candidate.object_being_manufactured }}{% if candidate.industrial_process %} · {{ candidate.industrial_process }}{% endif %}</p></div>
+  <div class="status-cluster">{{ badge(candidate.status) }} {{ badge(candidate.rights_status) }}</div>
+</section>
+{{ pipeline_view(pipeline) }}
+
+<div class="detail-layout">
+<div class="detail-main">
+<section class="panel" id="source">
+  <div class="section-heading"><h2>Source</h2><a href="{{ candidate.source_url }}" target="_blank" rel="noopener noreferrer">Open source ↗</a></div>
+  <div class="source-grid">
+    <div>{% if candidate.preview_url %}<video id="source-video" class="source-preview" controls preload="metadata" poster="{{ candidate.thumbnail_url or '' }}"><source src="{{ candidate.preview_url }}"></video>{% elif candidate.thumbnail_url %}<img class="source-preview" src="{{ candidate.thumbnail_url }}" alt="{{ candidate.title }}">{% endif %}</div>
+    <dl class="facts"><div><dt>Creator</dt><dd>{{ candidate.author or 'Unknown' }}</dd></div><div><dt>Provider</dt><dd>{{ candidate.provider }}</dd></div><div><dt>License</dt><dd>{{ candidate.license_name or 'Not recorded' }}</dd></div><div><dt>Rights</dt><dd>{{ badge(candidate.rights_status) }}</dd></div><div><dt>Duration</dt><dd>{{ '%.1f s'|format(candidate.duration) if candidate.duration else 'Unknown' }}</dd></div></dl>
+  </div>
+  <details><summary>Review source rights</summary>
+    <form method="post" action="/dashboard/review/rights/{{ candidate.id }}/approve" class="stack-form rights-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_to" value="/dashboard/candidates/{{ candidate.id }}">
+      <label>Reviewer<input name="reviewer" value="{{ default_reviewer }}" required></label><label>License name<input name="license_name" value="{{ candidate.license_name or '' }}" required></label>
+      <label>License URL<input type="url" name="license_url" value="{{ candidate.license_url or '' }}" required></label><label>Evidence URL<input type="url" name="evidence_url" value="{{ candidate.rights.evidence_url or '' }}" required></label>
+      <label class="checkbox"><input type="checkbox" name="commercial_use_allowed" value="true" {{ 'checked' if candidate.rights.commercial_use_allowed }}> Commercial use allowed</label><label class="checkbox"><input type="checkbox" name="modification_allowed" value="true" {{ 'checked' if candidate.rights.modification_allowed }}> Modification allowed</label>
+      <label class="checkbox"><input type="checkbox" name="attribution_required" value="true" {{ 'checked' if candidate.rights.attribution_required }}> Attribution required</label><label>Attribution text<input name="attribution_text" value="{{ candidate.rights.attribution_text or '' }}"></label>
+      <label>Notes<textarea name="notes" placeholder="Optional approval notes"></textarea></label><button class="button approve" type="submit">Verify rights</button>
+    </form>
+    <form method="post" action="/dashboard/review/rights/{{ candidate.id }}/reject" class="review-form" data-confirm="Mark these rights as restricted?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_to" value="/dashboard/candidates/{{ candidate.id }}"><input name="reviewer" value="{{ default_reviewer }}" required><input name="notes" placeholder="Restriction reason" required><button class="button reject">Restrict</button>
+    </form>
+  </details>
+</section>
+
+<section class="panel" id="visual-analysis">
+  <div class="section-heading"><h2>Visual analysis</h2>{% if actions.ai %}<form method="post" action="/dashboard/actions/ai-score/{{ candidate.id }}" data-confirm="Run external AI visual analysis?"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_to" value="/dashboard/candidates/{{ candidate.id }}"><button class="button">Run AI score <span class="cost-badge">External API</span></button></form>{% endif %}</div>
+  {% if latest_ai %}
+    <div class="score-summary"><strong>{{ '%.1f'|format(latest_ai.total_score) }}</strong><span>Total AI score · confidence {{ '%.0f%%'|format((latest_ai.overall_confidence or 0) * 100) }}</span></div>
+    <div class="dimension-grid">{% for name, value in latest_ai.ratings.items() %}<div><span>{{ name|replace('_',' ') }}</span><strong>{{ '%.1f'|format(value) }}</strong></div>{% endfor %}</div>
+    {% if latest_ai.analysis %}
+      {% for key in ['hook_segments','notable_moments','loop_segments','evidence'] %}{% if latest_ai.analysis.get(key) %}<h3>{{ key|replace('_',' ')|title }}</h3><ul class="timeline-list">{% for moment in latest_ai.analysis[key] %}<li><button type="button" class="timestamp" data-seek="{{ moment.get('start', moment.get('start_seconds', 0)) }}" data-target="source-video">{{ '%.1f'|format(moment.get('start', moment.get('start_seconds', 0))) }}s</button> {{ moment.get('description', moment) }}</li>{% endfor %}</ul>{% endif %}{% endfor %}
+    {% endif %}
+  {% else %}<p class="empty">No AI visual evaluation yet. Opening this page never starts one.</p>{% endif %}
+</section>
+
+<section class="panel" id="research">
+  <div class="section-heading"><h2>Research</h2>{% if actions.research %}<form method="post" action="/dashboard/actions/research/{{ candidate.id }}" data-confirm="Run external technical research?"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_to" value="/dashboard/candidates/{{ candidate.id }}"><button class="button">Run research <span class="cost-badge">External API</span></button></form>{% endif %}</div>
+  {% if dossier %}<div class="row between"><div><strong>{{ dossier.verified_process_name or dossier.detected_process or 'Process unresolved' }}</strong><p>{{ dossier.research_summary }}</p></div>{{ badge(dossier.status) }}</div>
+    <h3>Claims</h3><div class="claim-list">{% for claim in dossier.claims %}<article><div class="row between"><strong>#{{ claim.id }} · {{ claim.category }}</strong>{{ badge(claim.status) }}</div><p>{{ claim.statement }}</p><small>Source support {{ '%.0f%%'|format(claim.source_support_confidence * 100) }} · Video applicability {{ '%.0f%%'|format(claim.video_applicability_confidence * 100) }}</small>{% for evidence in claim.evidence %}<blockquote>{{ evidence.excerpt }} <a href="{{ evidence.source.url }}" target="_blank" rel="noopener">Source ↗</a></blockquote>{% endfor %}</article>{% endfor %}</div>
+    {% if dossier.contradictions %}<h3>Contradictions</h3><ul>{% for item in dossier.contradictions %}<li>{{ item.description }} · {{ 'Resolved' if item.resolved else 'Unresolved' }}</li>{% endfor %}</ul>{% endif %}
+    {{ review_forms('research', dossier.id, '/dashboard/candidates/' ~ candidate.id, default_reviewer, csrf_token, dossier.status.value in ['NEEDS_REVIEW']) }}
+  {% else %}<p class="empty">No research dossier.</p>{% endif %}
+</section>
+
+<section class="panel" id="script">
+  <div class="section-heading"><h2>Script</h2>{% if actions.script %}<form method="post" action="/dashboard/actions/script/{{ candidate.id }}" data-confirm="Generate a script using an external model?"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_to" value="/dashboard/candidates/{{ candidate.id }}"><button class="button">Generate script <span class="cost-badge">External API</span></button></form>{% endif %}</div>
+  {% if script %}<div class="row between"><div><h3>{{ script.title }}</h3><p>{{ script.hook }}</p></div>{{ badge(script.status) }}</div><p>{{ script.word_count }} words · {{ '%.1f s'|format(script.estimated_duration_seconds) }} · {{ script.style.value }}</p>
+    {% for beat in script.beats %}<article class="beat"><button class="timestamp" type="button" data-seek="{{ beat.recommended_start }}" data-target="best-video">{{ '%.1f'|format(beat.recommended_start) }}–{{ '%.1f'|format(beat.recommended_end) }}s</button><strong>{{ beat.kind.value }}</strong><small>{{ beat.visual_direction }}</small>{% for sentence in beat.sentences %}<p>{{ sentence.display_text }}{% if sentence.display_text != sentence.spoken_text %}<small>Spoken: {{ sentence.spoken_text }}</small>{% endif %}</p>{% endfor %}</article>{% endfor %}
+    {{ review_forms('script', script.id, '/dashboard/candidates/' ~ candidate.id, default_reviewer, csrf_token, script.status.value in ['VALIDATED','NEEDS_REVISION']) }}
+  {% else %}<p class="empty">No generated script.</p>{% endif %}
+</section>
+
+<section class="panel" id="narration">
+  <div class="section-heading"><h2>Narration</h2>{% if actions.narration %}<form method="post" action="/dashboard/actions/narration/{{ approved_script.id }}" data-confirm="Generate narration using the configured TTS provider?"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_to" value="/dashboard/candidates/{{ candidate.id }}"><button class="button">Generate narration <span class="cost-badge">External API</span></button></form>{% endif %}</div>
+  {% for narration in narrations %}<article class="asset-row"><div class="row between"><strong>Narration #{{ narration.id }} · {{ narration.voice_profile.name }}</strong>{{ badge(narration.status) }}</div>{{ audio_player('/media/audio/' ~ narration.id) }}<p>{{ '%.2f s'|format(narration.duration_seconds) }} actual · {{ '%+.2f s'|format(narration.duration_difference_seconds) }} vs estimate · {{ narration.alignment_method.value }}</p>{{ review_forms('narration', narration.id, '/dashboard/candidates/' ~ candidate.id, default_reviewer, csrf_token, narration.status.value in ['VALIDATED','NEEDS_REVIEW']) }}</article>{% else %}<p class="empty">No narration assets.</p>{% endfor %}
+</section>
+
+<section class="panel" id="raw-render">
+  <div class="section-heading"><h2>Raw render</h2>{% if actions.render_plan %}<form method="post" action="/dashboard/actions/render-plan/{{ candidate.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_to" value="/dashboard/candidates/{{ candidate.id }}"><input type="hidden" name="script_id" value="{{ approved_script.id }}"><input type="hidden" name="narration_id" value="{{ approved_narration.id }}"><button class="button">Create render plan</button></form>{% endif %}</div>
+  {% for plan in plans %}{% if not plan.renders %}<form method="post" action="/dashboard/actions/raw-render/{{ plan.id }}" data-confirm="Run local FFmpeg rendering?"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_to" value="/dashboard/candidates/{{ candidate.id }}"><button class="button">Render plan #{{ plan.id }}</button></form>{% endif %}{% endfor %}
+  {% for render in raw_renders %}<article class="asset-row"><div class="row between"><strong>Raw render #{{ render.id }}</strong>{{ badge(render.status) }}</div>{% if render.output_path %}{{ video_player('/media/render/' ~ render.id, 'raw-video-' ~ render.id, '', true) }}{% endif %}<p>{{ render.width or '—' }}×{{ render.height or '—' }} · {{ '%.2f s'|format(render.duration) if render.duration else 'No duration' }} · {{ render.video_codec or '—' }}/{{ render.audio_codec or '—' }}</p>{{ review_forms('render', render.id, '/dashboard/candidates/' ~ candidate.id, default_reviewer, csrf_token, render.status.value in ['VALIDATED','NEEDS_REVIEW']) }}{% if render.status.value == 'APPROVED' %}<form method="post" action="/dashboard/actions/caption-plan/{{ render.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_to" value="/dashboard/candidates/{{ candidate.id }}"><button class="button">Create caption plan</button></form>{% endif %}</article>{% else %}<p class="empty">No raw renders.</p>{% endfor %}
+</section>
+
+<section class="panel" id="final-render">
+  <div class="section-heading"><h2>Final render</h2></div>
+  {% for plan in caption_plans %}{% if not plan.final_renders %}<form method="post" action="/dashboard/actions/final-render/{{ plan.id }}" data-confirm="Run local decorated FFmpeg render?"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_to" value="/dashboard/candidates/{{ candidate.id }}"><button class="button">Render caption plan #{{ plan.id }} · {{ plan.style_profile.value }}</button></form>{% endif %}{% endfor %}
+  {% for render in final_renders %}<article class="asset-row final-card">{% if render.preview_path %}<img src="/media/preview/{{ render.id }}" alt="Final render preview">{% endif %}<div><div class="row between"><strong>Final render #{{ render.id }}</strong>{{ badge(render.status) }}</div><p>{{ render.width or '—' }}×{{ render.height or '—' }} · {{ '%.2f s'|format(render.duration) if render.duration else '—' }}</p><a class="button" href="/dashboard/final-renders/{{ render.id }}">Open visual review</a></div></article>{% else %}<p class="empty">No final renders.</p>{% endfor %}
+</section>
+</div>
+
+<aside class="detail-aside panel">
+  <h2>Candidate decision</h2><p>Approval remains subject to backend rights and score validation.</p>{{ review_forms('candidate', candidate.id, '/dashboard/candidates/' ~ candidate.id, default_reviewer, csrf_token, candidate.status.value not in ['APPROVED','REJECTED']) }}
+  <h3>Quick navigation</h3><nav class="side-nav"><a href="#source">Source</a><a href="#visual-analysis">Visual analysis</a><a href="#research">Research</a><a href="#script">Script</a><a href="#narration">Narration</a><a href="#raw-render">Raw render</a><a href="#final-render">Final render</a></nav>
+</aside>
+</div>
+{% endblock %}

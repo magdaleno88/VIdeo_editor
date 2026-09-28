@@ -98,6 +98,7 @@ class Settings(BaseSettings):
     branding_asset_path: str = ""
     branding_channel_name: str = ""
     branding_opacity: float = Field(0.7, ge=0.1, le=1)
+    dashboard_default_reviewer: str = Field("Local operator", min_length=1, max_length=200)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     scoring_weights: ScoringWeights = Field(default_factory=ScoringWeights)
 

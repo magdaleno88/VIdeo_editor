@@ -1,6 +1,6 @@
 # Roadmap
 
-Phases 1–7 are implemented. Later phases are architectural plans, not executable or simulated integrations.
+Phases 1–8A are implemented. Later phases are architectural plans, not executable or simulated integrations.
 
 | Phase | Module | Completion criteria |
 | --- | --- | --- |
@@ -11,7 +11,8 @@ Phases 1–7 are implemented. Later phases are architectural plans, not executab
 | 5 | Text-to-speech | Provider-neutral voice generation from approved scripts, persisted voice profiles/settings, atomic audio storage, checksum and format checks, provider or estimated timing, duration QA, cache identity and explicit narration review. **Implemented.** |
 | 6 | FFmpeg automatic editing | Rights-gated deterministic edit plans, narration-led clip selection, bounded speed/loops, vertical composition, safe FFmpeg execution, ffprobe validation, versioned MP4 assets and human review. **Implemented.** |
 | 7 | Subtitles and graphics | Script-derived timed captions, ASS/SRT, verified factual overlays, reusable styles, mobile safe areas, optional branding, preview, versioned decorated MP4 and human review. **Implemented.** |
-| 8 | Human approval dashboard | Spanish-friendly candidate and artifact review, source credits, authenticated roles, before/after evidence and explicit QA decisions. **Next module.** |
+| 8A | Local operational review dashboard | Server-rendered candidate/pipeline views, review queue, safe media playback, timestamp navigation, explicit actions, CSRF-protected review forms and local-only operation. **Implemented.** |
+| 8B | Shared-operation hardening | Authentication, authorization roles, per-user sessions/CSRF, backups and production deployment controls. Planned; required before remote access. |
 | 9 | Publishing integrations | QA-gated exports; Facebook Reels first, then Instagram/TikTok/YouTube Shorts; platform authorization, idempotency, schedules and publication receipts. |
 | 10 | Analytics and performance feedback | Versioned metrics, retention/completion context, controlled experiments and audited feedback into scoring. |
 

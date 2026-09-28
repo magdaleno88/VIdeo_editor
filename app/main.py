@@ -1,7 +1,10 @@
+import secrets
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import Engine
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -11,6 +14,7 @@ from app.core.database import build_engine, session_factory
 from app.core.errors import ApplicationError
 from app.core.logging import configure_logging
 from app.core.schema import check_schema
+from app.web.routes import router as web_router
 
 
 def create_app(settings: Settings | None = None, engine: Engine | None = None) -> FastAPI:
@@ -35,12 +39,13 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             "Local discovery, transparent visual scoring, source-backed research, "
             "verified scripts, "
             "approved narration, deterministic video assembly, captions, graphics "
-            "and human review."
+            "and a local operational review dashboard."
         ),
     )
     application.state.settings = settings
     application.state.engine = database
     application.state.session_factory = session_factory(database)
+    application.state.dashboard_csrf_token = secrets.token_urlsafe(32)
 
     @application.exception_handler(ApplicationError)
     async def application_error(request: Request, exc: ApplicationError):
@@ -52,7 +57,13 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             status_code=409, content={"detail": "Candidate changed concurrently; reload and retry"}
         )
 
+    application.include_router(web_router)
     application.include_router(router)
+    application.mount(
+        "/dashboard/static",
+        StaticFiles(directory=str(Path(__file__).resolve().parent / "web" / "static")),
+        name="dashboard_static",
+    )
     return application
 
 

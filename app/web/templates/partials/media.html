@@ -1,0 +1,13 @@
+{% macro video_player(url, element_id, poster='', compact=false) -%}
+<video id="{{ element_id }}" class="video-player{% if compact %} compact{% endif %}" controls preload="metadata"{% if poster %} poster="{{ poster }}"{% endif %}>
+  <source src="{{ url }}" type="video/mp4">
+  Your browser cannot play this MP4.
+</video>
+{%- endmacro %}
+
+{% macro audio_player(url) -%}
+<audio class="audio-player" controls preload="metadata">
+  <source src="{{ url }}">
+  Your browser cannot play this audio.
+</audio>
+{%- endmacro %}

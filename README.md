@@ -1,6 +1,6 @@
 # Industrial Content Factory
 
-A local, semi-automated backend for discovering industrial-process videos and building human-reviewed educational short-form content. Phases 1–7 implement **discovery, rights review, scoring, AI visual analysis, claim-centric research, traceable scripts, approved narration, deterministic vertical-video assembly, captions and graphics**. It does not publish or remove watermarks from videos.
+A local, semi-automated system for discovering industrial-process videos and building human-reviewed educational short-form content. Phases 1–8A implement **discovery, rights review, scoring, AI visual analysis, claim-centric research, traceable scripts, approved narration, deterministic vertical-video assembly, captions, graphics and a local operational dashboard**. It does not publish or remove watermarks from videos.
 
 ## Features
 
@@ -18,6 +18,7 @@ A local, semi-automated backend for discovering industrial-process videos and bu
 - Generate a single checked narration asset from an approved script through the configured ElevenLabs voice, with stored checksum, timing, cache identity and separate human review.
 - Build an inspectable edit plan from approved visual references and narration timing, then render and validate a versioned vertical H.264/AAC MP4 with FFmpeg.
 - Build captions from approved script sentences and narration alignment, generate UTF-8 ASS/SRT, add safe-area hook/verified-fact graphics, render a separate decorated MP4 and review it independently.
+- Operate the complete pipeline from a local server-rendered dashboard with review queues, safe audio/video playback, timestamp seeking, explicit cost-bearing actions and CSRF-protected decisions.
 - Review rights with evidence, approve/reject candidates, and keep an audit history. Unverified rights block approval.
 - Use the same services through FastAPI, interactive OpenAPI docs and a JSON-output CLI.
 
@@ -54,12 +55,14 @@ flowchart LR
     Captions --> Subtitles[ASS + SRT]
     Captions --> Final[Decorated MP4 + preview]
     Final --> Repository
+    Dashboard[Local Jinja2 dashboard] --> API
+    Dashboard --> Media[ID-based safe media routes]
     Review --> Rights[Rights policy]
     Review --> Repository
     Repository --> DB[(SQLite / PostgreSQL-ready schema)]
 ```
 
-See [full pipeline architecture](docs/architecture.md), [provider integration notes](docs/providers.md), [scoring semantics](docs/scoring.md), [technical research](docs/research.md), [verified scripting](docs/scripting.md), [narration](docs/tts.md), [rendering](docs/rendering.md), [captions and graphics](docs/captions.md), and [the ten-phase roadmap](docs/roadmap.md).
+See [full pipeline architecture](docs/architecture.md), [provider integration notes](docs/providers.md), [scoring semantics](docs/scoring.md), [technical research](docs/research.md), [verified scripting](docs/scripting.md), [narration](docs/tts.md), [rendering](docs/rendering.md), [captions and graphics](docs/captions.md), [dashboard operation](docs/dashboard.md), and [the ten-phase roadmap](docs/roadmap.md).
 
 ## Installation
 
@@ -89,7 +92,7 @@ cp .env.example .env
 
 Unix instructions describe the intended setup; this delivery was verified on Windows. `requirements.lock` pins the installed runtime and test dependencies. The optional PostgreSQL driver is not included in that lock.
 
-Open [interactive API docs](http://127.0.0.1:8000/docs) or [health](http://127.0.0.1:8000/health). Migrations create the database schema. Application startup never silently changes tables and reports missing/outdated migrations.
+Open the [local dashboard](http://127.0.0.1:8000/), [interactive API docs](http://127.0.0.1:8000/docs) or [health](http://127.0.0.1:8000/health). Keep Uvicorn bound to `127.0.0.1`; Phase 8A is a trusted single-user interface without remote authentication. Migrations create the database schema. Application startup never silently changes tables and reports missing/outdated migrations.
 
 ## Configuration
 
@@ -156,6 +159,7 @@ Edit `.env` locally. Never commit real credentials.
 | `GRAPHICS_BRANDING_ENABLED` | `false`; optional branding is opt-in |
 | `BRANDING_ASSET_PATH` / `BRANDING_CHANNEL_NAME` | Empty; optional checked local logo and text |
 | `BRANDING_OPACITY` | `0.70`; normalized logo opacity |
+| `DASHBOARD_DEFAULT_REVIEWER` | `Local operator`; initial reviewer name in dashboard forms |
 | `LOG_LEVEL` | `INFO`; application events use JSON logging on stderr |
 | `SCORING_WEIGHTS__<DIMENSION>` | Override a score weight; the total must remain 100 |
 

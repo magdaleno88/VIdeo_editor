@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "partials/status.html" import badge %}
+{% block title %}Candidates · Industrial Content Factory{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">Discovery</p><h1>Candidates</h1><p>{{ result.total }} matching videos</p></div></section>
+<form method="get" class="filters panel">
+  <label>Provider<select name="provider"><option value="">All</option><option value="pexels" {{ 'selected' if filters.provider == 'pexels' }}>Pexels</option><option value="pixabay" {{ 'selected' if filters.provider == 'pixabay' }}>Pixabay</option></select></label>
+  <label>Status<input name="status" value="{{ filters.status }}" placeholder="APPROVED"></label>
+  <label>Min score<input type="number" name="minimum_score" value="{{ filters.minimum_score }}" min="0" max="100"></label>
+  <label>Category<input name="category" value="{{ filters.category }}"></label>
+  <label>Process<input name="industrial_process" value="{{ filters.industrial_process }}"></label>
+  <label>Rights<input name="rights_status" value="{{ filters.rights_status }}" placeholder="VERIFIED"></label>
+  <label>Sort<select name="sort"><option value="newest" {{ 'selected' if filters.sort == 'newest' }}>Newest</option><option value="score" {{ 'selected' if filters.sort == 'score' }}>Score</option><option value="status" {{ 'selected' if filters.sort == 'status' }}>Status</option></select></label>
+  <button class="button" type="submit">Apply</button>
+</form>
+<section class="candidate-grid">
+  {% for candidate in result.items %}
+  <article class="candidate-card">
+    <a href="/dashboard/candidates/{{ candidate.id }}" class="thumbnail">{% if candidate.dashboard_preview_id %}<img src="/media/preview/{{ candidate.dashboard_preview_id }}" alt="Final render preview for {{ candidate.title }}" loading="lazy">{% elif candidate.thumbnail_url %}<img src="{{ candidate.thumbnail_url }}" alt="Source preview for {{ candidate.title }}" loading="lazy">{% else %}<span>No thumbnail</span>{% endif %}</a>
+    <div class="card-body">
+      <div class="row between">{{ badge(candidate.status) }} {{ badge(candidate.rights_status) }}</div>
+      <h2><a href="/dashboard/candidates/{{ candidate.id }}">{{ candidate.title }}</a></h2>
+      <p>{{ candidate.object_being_manufactured }}{% if candidate.industrial_process %} · {{ candidate.industrial_process }}{% endif %}</p>
+      <dl class="inline-meta"><div><dt>Provider</dt><dd>{{ candidate.provider }}</dd></div><div><dt>Score</dt><dd>{{ '%.1f'|format(candidate.total_score) if candidate.total_score is not none else '—' }}</dd></div><div><dt>Stage</dt><dd>{{ candidate.dashboard_stage }}</dd></div><div><dt>Created</dt><dd>{{ candidate.created_at.strftime('%Y-%m-%d') }}</dd></div></dl>
+    </div>
+  </article>
+  {% else %}<p class="empty panel">No candidates match these filters.</p>{% endfor %}
+</section>
+<nav class="pagination" aria-label="Candidate pages">
+  {% if result.page > 1 %}<a class="button subtle" href="?{{ request.query_params|replace('page=' ~ result.page, 'page=' ~ (result.page - 1)) }}">Previous</a>{% endif %}
+  <span>Page {{ result.page }} of {{ result.pages }}</span>
+  {% if result.page < result.pages %}<a class="button subtle" href="?{{ request.query_params|replace('page=' ~ result.page, 'page=' ~ (result.page + 1)) }}{% if 'page=' not in request.url.query %}{{ '&' if request.url.query else '' }}page={{ result.page + 1 }}{% endif %}">Next</a>{% endif %}
+</nav>
+{% endblock %}

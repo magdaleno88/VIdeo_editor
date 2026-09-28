@@ -1,0 +1,20 @@
+{% macro review_forms(kind, resource_id, return_to, reviewer, csrf_token, allow_approve=true) -%}
+<div class="review-actions">
+  {% if allow_approve %}
+  <form method="post" action="/dashboard/review/{{ kind }}/{{ resource_id }}/approve" class="review-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+    <input type="text" name="reviewer" value="{{ reviewer }}" aria-label="Reviewer" required>
+    <input type="text" name="notes" placeholder="Approval notes (optional)" aria-label="Approval notes">
+    <button class="button approve" type="submit">Approve</button>
+  </form>
+  {% endif %}
+  <form method="post" action="/dashboard/review/{{ kind }}/{{ resource_id }}/reject" class="review-form" data-confirm="Reject this item?">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+    <input type="text" name="reviewer" value="{{ reviewer }}" aria-label="Reviewer" required>
+    <input type="text" name="notes" placeholder="Rejection reason" aria-label="Rejection reason" required>
+    <button class="button reject" type="submit">Reject</button>
+  </form>
+</div>
+{%- endmacro %}

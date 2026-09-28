@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "partials/status.html" import badge %}
+{% block title %}Review queue · Industrial Content Factory{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">Human review</p><h1>Review queue</h1><p>Deliberate, individual decisions across the pipeline.</p></div></section>
+<nav class="tabs"><a href="/dashboard/review-queue">All</a>{% for value, label in [('final-renders','Final'),('rights','Rights'),('research','Research'),('scripts','Scripts'),('narrations','Narrations'),('raw-renders','Raw renders')] %}<a href="?stage={{ value }}" class="{{ 'active' if stage == value }}">{{ label }}</a>{% endfor %}</nav>
+{% for section in sections %}
+<section class="panel queue-section">
+  <div class="section-heading"><h2>{{ section.label }}</h2><span>{{ section.total }} pending</span></div>
+  <div class="table-wrap"><table><thead><tr><th>Resource</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>
+  {% for item in section['items'] %}
+    <tr><td>#{{ item.id }}{% if item.title is defined %} · {{ item.title }}{% endif %}</td><td>{{ badge(item.rights_status if section.key == 'rights' else item.status) }}</td><td>{{ item.created_at.strftime('%Y-%m-%d %H:%M') }}</td><td>{% if section.key == 'final-renders' %}<a href="/dashboard/final-renders/{{ item.id }}">Review</a>{% elif item.candidate_id is defined %}<a href="/dashboard/candidates/{{ item.candidate_id }}">Inspect</a>{% elif item.dashboard_candidate_id is defined and item.dashboard_candidate_id %}<a href="/dashboard/candidates/{{ item.dashboard_candidate_id }}">Inspect</a>{% elif section.key == 'rights' %}<a href="/dashboard/candidates/{{ item.id }}">Inspect</a>{% else %}<span>Open from candidate</span>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="4" class="empty">Nothing awaiting review.</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+{% endfor %}
+{% endblock %}

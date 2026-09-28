@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "partials/status.html" import badge %}
+{% from "partials/review_forms.html" import review_forms %}
+{% from "partials/media.html" import video_player %}
+{% block title %}Final render #{{ render.id }} · Industrial Content Factory{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">Final render review</p><h1>{{ candidate.title if candidate else 'Final render' }}</h1><p>Version #{{ render.id }} · {{ plan.style_profile.value }} captions</p></div>{{ badge(render.status) }}</section>
+<div class="review-layout">
+  <section class="portrait-stage">{% if render.output_path %}{{ video_player('/media/final-render/' ~ render.id, 'final-video') }}{% else %}<div class="empty">Render media is unavailable.</div>{% endif %}</section>
+  <aside class="panel review-metadata">
+    <h2>Review context</h2><dl class="facts"><div><dt>Candidate</dt><dd>{% if candidate %}<a href="/dashboard/candidates/{{ candidate.id }}">#{{ candidate.id }} · {{ candidate.title }}</a>{% else %}—{% endif %}</dd></div><div><dt>Script</dt><dd>#{{ script.id if script else '—' }} · {{ script.title if script else '—' }}</dd></div><div><dt>Narration</dt><dd>#{{ narration.id if narration else '—' }} · {{ narration.voice_profile.name if narration else '—' }}</dd></div><div><dt>Caption style</dt><dd>{{ plan.style_profile.value }}</dd></div><div><dt>Timing</dt><dd>{{ plan.timing_method.value }}</dd></div><div><dt>Duration</dt><dd>{{ '%.2f s'|format(render.duration) if render.duration else '—' }}</dd></div><div><dt>Output</dt><dd>{{ render.width }}×{{ render.height }} @ {{ '%.2f'|format(render.fps) if render.fps else '—' }} fps</dd></div><div><dt>Codecs</dt><dd>{{ render.video_codec or '—' }} / {{ render.audio_codec or '—' }}</dd></div><div><dt>Size</dt><dd>{{ '%.2f MB'|format(render.file_size_bytes / 1048576) if render.file_size_bytes else '—' }}</dd></div><div><dt>Checksum</dt><dd class="checksum">{{ render.checksum_sha256 or '—' }}</dd></div></dl>
+    {% if render.warnings %}<h3>Warnings</h3><ul class="warning-list">{% for warning in render.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>{% endif %}
+    {% if render.failure_reason %}<div class="notice error">{{ render.failure_reason }}</div>{% endif %}
+    {{ review_forms('final-render', render.id, '/dashboard/final-renders/' ~ render.id, default_reviewer, csrf_token, render.status.value in ['VALIDATED','NEEDS_REVIEW']) }}
+  </aside>
+</div>
+
+<div class="two-column">
+<section class="panel">
+  <div class="section-heading"><h2>Caption timeline</h2><span>{{ plan.items|length }} items</span></div>
+  <div class="timeline-list">{% for item in plan.items %}<button type="button" class="timeline-row" data-seek="{{ item.start_seconds }}" data-target="final-video"><span>{{ '%.1f'|format(item.start_seconds) }}–{{ '%.1f'|format(item.end_seconds) }}</span><strong>{{ item.display_text }}</strong><small>{{ item.timing_method.value }} · {{ '%.1f'|format(item.characters_per_second) }} cps</small></button>{% endfor %}</div>
+</section>
+<section class="panel">
+  <div class="section-heading"><h2>Preview</h2>{% if not render.preview_path %}<form method="post" action="/dashboard/actions/preview/{{ render.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_to" value="/dashboard/final-renders/{{ render.id }}"><input type="hidden" name="time_seconds" value="1.5"><button class="button">Generate at 1.5 s</button></form>{% endif %}</div>
+  {% if render.preview_path %}<img class="preview-image" src="/media/preview/{{ render.id }}" alt="Preview of final render #{{ render.id }}">{% else %}<p class="empty">Preview generation is explicit and never runs on page load.</p>{% endif %}
+  <h3>Graphic overlays</h3><ul>{% for overlay in plan.overlays %}<li><button class="timestamp" type="button" data-seek="{{ overlay.start_seconds }}" data-target="final-video">{{ '%.1f'|format(overlay.start_seconds) }}s</button> {{ overlay.overlay_type.value }} · {{ overlay.text }}</li>{% else %}<li>No overlays.</li>{% endfor %}</ul>
+</section>
+</div>
+
+<section class="panel">
+  <div class="section-heading"><h2>Versions</h2><span>{{ versions|length }} available</span></div>
+  <div class="version-grid">{% for version in versions %}<a class="version-card {{ 'current' if version.id == render.id }}" href="/dashboard/final-renders/{{ version.id }}"><strong>Version #{{ version.id }}</strong>{{ badge(version.status) }}<small>{{ version.dashboard_style.value }} · {{ version.created_at.strftime('%Y-%m-%d %H:%M') }}</small><span>{{ version.checksum_sha256[:12] if version.checksum_sha256 else 'No checksum' }}</span></a>{% endfor %}</div>
+  {% if playable_versions|length > 1 %}<details><summary>Side-by-side comparison</summary><div class="comparison">{{ video_player('/media/final-render/' ~ playable_versions[0].id, 'compare-a', '', true) }}{{ video_player('/media/final-render/' ~ playable_versions[1].id, 'compare-b', '', true) }}</div></details>{% endif %}
+</section>
+{% endblock %}

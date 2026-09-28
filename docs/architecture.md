@@ -226,7 +226,7 @@ stateDiagram-v2
 
 Rendering checks current rights again before plan creation and execution; an earlier editorial approval does not substitute for an up-to-date rights check. Future workers and publishing integrations must keep that gate. Revocation still needs durable job cancellation and artifact quarantine when asynchronous jobs exist.
 
-## Full target pipeline (implemented through Phase 7)
+## Full target pipeline (implemented through Phase 8A)
 
 ```mermaid
 flowchart TD
@@ -254,13 +254,15 @@ flowchart TD
 | `services/narration` | Approved script + voice configuration → checked local audio | `VoiceProfile`, `NarrationAsset`, alignment, checksum, duration status and human review |
 | `services/rendering` | Approved candidate/script/narration → planned and validated vertical MP4 | `VideoEditPlan`, `EditSegment`, `RenderAsset`, checksums, FFmpeg versions and review history |
 | `services/captions` | Approved raw render + approved script/timing → accessible overlays and decorated MP4 | `CaptionPlan`, `CaptionItem`, `GraphicOverlay`, ASS/SRT, `FinalRenderAsset`, checksum, preview and review history |
-| Review/dashboard | Candidate and artifact evidence → decisions | Authenticated roles, immutable decision events, optimistic locking |
+| `web` dashboard | Candidate and artifact evidence → local decisions | Jinja2 views, bounded queries, ID-based media, process-local CSRF and existing review services |
 | `services/publishing` | QA-approved export → platform post | `Publication`, platform ID, consent, idempotency key and status |
 | `services/analytics` | Platform metrics → evaluation feedback | `PerformanceSnapshot`, capture time, exposure context and experiment cohort |
 
 Audio and render artifacts live in configurable local storage with checksums and SQL references, not database blobs. Add durable `Job` records (pending/running/succeeded/failed/cancelled), idempotency keys, bounded retries and an outbox before introducing background workers. Every future job should persist input versions and output manifests so human decisions remain traceable. n8n may trigger internal API operations and inspect job states; it must not bypass rights/approval policies or contain the core domain rules.
 
 ## Local operational boundary
+
+Phase 8A adds `app/web` without adding database models. Jinja2 pages are rendered by the existing FastAPI process; the REST API and CLI remain intact. Dashboard reads use paginated/batched queries and eager loading for nested detail. Mutations call existing domain services, and page loads never trigger external or paid work. Four media routes accept only persisted IDs and resolve relative paths under configured roots. Browser forms use a random process-local synchronizer token. This is appropriate for a loopback-bound single-user tool, not shared hosting; see `docs/dashboard.md`.
 
 No authentication, publishing integration, general download worker, remote deployment or telemetry exporter is included. An explicit AI-score action can make one paid Gemini analysis. A fresh research action makes bounded Brave requests, bounded page fetches and two Gemini calls. Script generation makes two Gemini calls per explicitly requested variant, with one variant by default and three maximum. Explicit narration makes one ElevenLabs request for the complete approved text. Rendering is explicit and synchronous, reacquires one known provider preview, runs one bounded FFmpeg process and validates it with ffprobe. Credentials use `SecretStr` and local environment configuration. Third-party URLs, document content, credentials and prompts are excluded from application logs.
 

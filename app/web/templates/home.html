@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "partials/status.html" import badge %}
+{% block title %}Operations · Industrial Content Factory{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div><p class="eyebrow">Operations</p><h1>Production dashboard</h1><p>Move each industrial video through review without triggering paid work automatically.</p></div>
+  <a class="button" href="/dashboard/review-queue">Open review queue</a>
+</section>
+
+<section class="metric-grid">
+  {% set labels = {
+    'candidates':'Candidates discovered','rights_review':'Rights awaiting review','scored':'Candidates scored',
+    'approved_candidates':'Candidates approved','research_review':'Research awaiting review',
+    'script_review':'Scripts awaiting review','narration_review':'Narrations awaiting review',
+    'raw_review':'Raw renders awaiting review','final_review':'Final renders awaiting review',
+    'approved_final':'Approved final renders'} %}
+  {% for key, value in counts.items() %}
+  <article class="metric"><strong>{{ value }}</strong><span>{{ labels[key] }}</span></article>
+  {% endfor %}
+</section>
+
+<div class="two-column">
+  <section class="panel">
+    <div class="section-heading"><div><p class="eyebrow">Explicit external action</p><h2>Discover videos</h2></div><span class="cost-badge">External API</span></div>
+    <form method="post" action="/dashboard/discover" class="stack-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Object<input name="object_name" required maxlength="60" placeholder="tornillo"></label>
+      <label>Process<input name="process_name" maxlength="60" placeholder="thread rolling"></label>
+      <label>Category<input name="category" maxlength="60" placeholder="metalworking"></label>
+      <button class="button" type="submit">Run discovery</button>
+    </form>
+  </section>
+  <section class="panel">
+    <div class="section-heading"><h2>Recent candidates</h2><a href="/dashboard/candidates">View all</a></div>
+    <div class="compact-list">
+      {% for candidate in recent_candidates %}
+      <a href="/dashboard/candidates/{{ candidate.id }}">
+        <span><strong>{{ candidate.title }}</strong><small>{{ candidate.provider }} · {{ candidate.created_at.strftime('%Y-%m-%d') }}</small></span>
+        {{ badge(candidate.status) }}
+      </a>
+      {% else %}<p class="empty">No candidates yet. Discovery only runs when you submit the form.</p>{% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

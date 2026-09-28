@@ -1,0 +1,8 @@
+{% from "partials/status.html" import badge %}
+{% macro pipeline_view(stages) -%}
+<ol class="pipeline" aria-label="Pipeline status">
+  {% for label, status in stages %}
+  <li><span>{{ label }}</span>{{ badge(status) }}</li>
+  {% endfor %}
+</ol>
+{%- endmacro %}

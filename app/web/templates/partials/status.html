@@ -1,0 +1,4 @@
+{% macro badge(status) -%}
+  {% set value = status.value if status is defined and status.value is defined else status %}
+  <span class="badge badge-{{ (value|string)|lower|replace('_', '-') }}">{{ value }}</span>
+{%- endmacro %}
