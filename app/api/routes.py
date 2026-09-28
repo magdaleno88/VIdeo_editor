@@ -8,8 +8,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.api.dependencies import (
     SessionDep,
     get_ai_scorer,
+    get_caption_plan,
     get_discovery,
     get_edit_plan,
+    get_final_render_review,
+    get_final_render_service,
     get_narration_review,
     get_narration_service,
     get_render_review,
@@ -29,16 +32,23 @@ from app.schemas.domain import (
     CandidateFilters,
     CandidatePage,
     CandidateRead,
+    CaptionPlanRead,
+    CaptionPlanRequest,
     DiscoveryRequest,
     DiscoveryResult,
     EvaluationRead,
     EventRead,
+    FinalRenderAssetRead,
+    FinalRenderRequest,
+    FinalRenderResponse,
+    FinalRenderReviewRequest,
     Idea,
     ManualScoreRequest,
     NarrationAssetRead,
     NarrationRequest,
     NarrationResponse,
     NarrationReviewRequest,
+    PreviewRequest,
     RenderAssetRead,
     RenderPlanRequest,
     RenderRequest,
@@ -58,6 +68,11 @@ from app.schemas.domain import (
     ScriptGenerationResponse,
     ScriptReviewRequest,
     VideoEditPlanRead,
+)
+from app.services.captions.service import (
+    CaptionPlanService,
+    FinalRenderReviewService,
+    FinalRenderService,
 )
 from app.services.discovery.queries import TemplateQueryGenerator
 from app.services.discovery.service import DiscoveryService
@@ -80,6 +95,9 @@ NarrationReviewDep = Annotated[NarrationReviewService, Depends(get_narration_rev
 EditPlanDep = Annotated[EditPlanService, Depends(get_edit_plan)]
 RenderDep = Annotated[RenderService, Depends(get_render_service, scope="function")]
 RenderReviewDep = Annotated[RenderReviewService, Depends(get_render_review)]
+CaptionPlanDep = Annotated[CaptionPlanService, Depends(get_caption_plan)]
+FinalRenderDep = Annotated[FinalRenderService, Depends(get_final_render_service, scope="function")]
+FinalRenderReviewDep = Annotated[FinalRenderReviewService, Depends(get_final_render_review)]
 
 
 @router.get("/health", tags=["operations"])
@@ -381,4 +399,80 @@ def reject_render(render_id: int, body: ReviewAction, service: RenderReviewDep) 
     return service.review(
         render_id,
         RenderReviewRequest(decision="REJECTED", reviewer=body.reviewer, notes=body.notes),
+    )
+
+
+@router.post(
+    "/renders/{render_id}/caption-plans", response_model=CaptionPlanRead, tags=["captions"]
+)
+def create_caption_plan(
+    render_id: int, body: CaptionPlanRequest, service: CaptionPlanDep
+) -> CaptionPlanRead:
+    return service.create(render_id, body)
+
+
+@router.get(
+    "/renders/{render_id}/caption-plans",
+    response_model=list[CaptionPlanRead],
+    tags=["captions"],
+)
+def render_caption_plans(render_id: int, service: CaptionPlanDep) -> list[CaptionPlanRead]:
+    return service.list(render_id)
+
+
+@router.get("/caption-plans/{plan_id}", response_model=CaptionPlanRead, tags=["captions"])
+def caption_plan(plan_id: int, service: CaptionPlanDep) -> CaptionPlanRead:
+    return service.get(plan_id)
+
+
+@router.post(
+    "/caption-plans/{plan_id}/render", response_model=FinalRenderResponse, tags=["captions"]
+)
+def execute_final_render(
+    plan_id: int, body: FinalRenderRequest, service: FinalRenderDep
+) -> FinalRenderResponse:
+    return service.render(plan_id, force=body.force)
+
+
+@router.get("/final-renders/{render_id}", response_model=FinalRenderAssetRead, tags=["captions"])
+def final_render(render_id: int, service: FinalRenderReviewDep) -> FinalRenderAssetRead:
+    return service.get(render_id)
+
+
+@router.post(
+    "/final-renders/{render_id}/preview",
+    response_model=FinalRenderAssetRead,
+    tags=["captions"],
+)
+def preview_final_render(
+    render_id: int, body: PreviewRequest, service: FinalRenderDep
+) -> FinalRenderAssetRead:
+    return service.preview(render_id, body.time_seconds)
+
+
+@router.post(
+    "/final-renders/{render_id}/approve",
+    response_model=FinalRenderAssetRead,
+    tags=["captions"],
+)
+def approve_final_render(
+    render_id: int, body: ReviewAction, service: FinalRenderReviewDep
+) -> FinalRenderAssetRead:
+    return service.review(
+        render_id,
+        FinalRenderReviewRequest(decision="APPROVED", reviewer=body.reviewer, notes=body.notes),
+    )
+
+
+@router.post(
+    "/final-renders/{render_id}/reject",
+    response_model=FinalRenderAssetRead,
+    tags=["captions"],
+)
+def reject_final_render(
+    render_id: int, body: ReviewAction, service: FinalRenderReviewDep
+) -> FinalRenderAssetRead:
+    return service.review(
+        render_id,
+        FinalRenderReviewRequest(decision="REJECTED", reviewer=body.reviewer, notes=body.notes),
     )

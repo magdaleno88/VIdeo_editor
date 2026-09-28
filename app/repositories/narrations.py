@@ -89,7 +89,18 @@ class NarrationRepository:
 
 
 def narration_read(item: NarrationAsset) -> NarrationAssetRead:
-    alignments = [NarrationAlignmentRead.model_validate(row) for row in item.alignments]
+    alignments = [
+        NarrationAlignmentRead(
+            sentence_id=row.sentence_id,
+            beat_id=row.beat_id,
+            start_seconds=row.start_seconds,
+            end_seconds=row.end_seconds,
+            method=row.method,
+            confidence=row.confidence,
+            word_timings=row.word_timings or [],
+        )
+        for row in item.alignments
+    ]
     grouped: dict[int, list[NarrationAlignmentRead]] = {}
     for row in alignments:
         grouped.setdefault(row.beat_id, []).append(row)

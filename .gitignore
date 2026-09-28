@@ -20,5 +20,6 @@ build/
 data/*
 !data/.gitkeep
 data/audio/
+data/captions/
 data/renders/
 

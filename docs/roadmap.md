@@ -1,6 +1,6 @@
 # Roadmap
 
-Phases 1–6 are implemented. Later phases are architectural plans, not executable or simulated integrations.
+Phases 1–7 are implemented. Later phases are architectural plans, not executable or simulated integrations.
 
 | Phase | Module | Completion criteria |
 | --- | --- | --- |
@@ -10,8 +10,8 @@ Phases 1–6 are implemented. Later phases are architectural plans, not executab
 | 4 | Script generation | Versioned educational scripts constrained to reviewed verified claims, with hooks, scene beats, sentence-level provenance, timing and human review. **Implemented.** |
 | 5 | Text-to-speech | Provider-neutral voice generation from approved scripts, persisted voice profiles/settings, atomic audio storage, checksum and format checks, provider or estimated timing, duration QA, cache identity and explicit narration review. **Implemented.** |
 | 6 | FFmpeg automatic editing | Rights-gated deterministic edit plans, narration-led clip selection, bounded speed/loops, vertical composition, safe FFmpeg execution, ffprobe validation, versioned MP4 assets and human review. **Implemented.** |
-| 7 | Subtitles and graphics | Accurate timed captions, diagrams/overlays, readability and mobile safe-area checks. **Next module.** |
-| 8 | Human approval dashboard | Spanish-friendly candidate and artifact review, source credits, authenticated roles, before/after evidence and explicit QA decisions. |
+| 7 | Subtitles and graphics | Script-derived timed captions, ASS/SRT, verified factual overlays, reusable styles, mobile safe areas, optional branding, preview, versioned decorated MP4 and human review. **Implemented.** |
+| 8 | Human approval dashboard | Spanish-friendly candidate and artifact review, source credits, authenticated roles, before/after evidence and explicit QA decisions. **Next module.** |
 | 9 | Publishing integrations | QA-gated exports; Facebook Reels first, then Instagram/TikTok/YouTube Shorts; platform authorization, idempotency, schedules and publication receipts. |
 | 10 | Analytics and performance feedback | Versioned metrics, retention/completion context, controlled experiments and audited feedback into scoring. |
 

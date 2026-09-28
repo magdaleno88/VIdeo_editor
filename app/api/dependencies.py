@@ -13,11 +13,18 @@ from app.providers.base import VideoSourceProvider
 from app.providers.registry import configured_providers
 from app.repositories.cache import SearchCacheRepository
 from app.repositories.candidates import CandidateRepository
+from app.repositories.captions import CaptionRepository
 from app.repositories.narrations import NarrationRepository
 from app.repositories.renders import RenderRepository
 from app.repositories.research import ResearchRepository
 from app.repositories.scripts import ScriptRepository
 from app.schemas.domain import ProviderName
+from app.services.captions.runtime import caption_plan_service, configured_final_render_service
+from app.services.captions.service import (
+    CaptionPlanService,
+    FinalRenderReviewService,
+    FinalRenderService,
+)
 from app.services.discovery.queries import TemplateQueryGenerator
 from app.services.discovery.service import DiscoveryService
 from app.services.narration.runtime import configured_narration_service
@@ -150,3 +157,20 @@ def get_render_service(
 
 def get_render_review(session: SessionDep) -> RenderReviewService:
     return RenderReviewService(CandidateRepository(session), RenderRepository(session))
+
+
+def get_caption_plan(session: SessionDep, settings: SettingsDep) -> CaptionPlanService:
+    return caption_plan_service(settings, session)
+
+
+def get_final_render_service(
+    session: SessionDep, settings: SettingsDep
+) -> Iterator[FinalRenderService]:
+    with configured_final_render_service(settings, session) as service:
+        yield service
+
+
+def get_final_render_review(session: SessionDep) -> FinalRenderReviewService:
+    return FinalRenderReviewService(
+        CandidateRepository(session), RenderRepository(session), CaptionRepository(session)
+    )

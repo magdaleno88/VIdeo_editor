@@ -1,6 +1,11 @@
 from app.models.candidate import (
     CandidateEvent,
+    CaptionItem,
+    CaptionPlan,
     EditSegment,
+    FinalRenderAsset,
+    FinalRenderReview,
+    GraphicOverlay,
     NarrationAlignment,
     NarrationAsset,
     NarrationReview,
@@ -27,7 +32,12 @@ from app.models.candidate import (
 
 __all__ = [
     "CandidateEvent",
+    "CaptionItem",
+    "CaptionPlan",
     "EditSegment",
+    "FinalRenderAsset",
+    "FinalRenderReview",
+    "GraphicOverlay",
     "NarrationAlignment",
     "NarrationAsset",
     "NarrationReview",

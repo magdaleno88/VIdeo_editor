@@ -18,6 +18,7 @@ from app.providers.ai import GeminiVideoAnalysisProvider
 from app.providers.registry import configured_providers
 from app.repositories.cache import SearchCacheRepository
 from app.repositories.candidates import CandidateRepository, compare_evaluations
+from app.repositories.captions import CaptionRepository
 from app.repositories.narrations import NarrationRepository
 from app.repositories.renders import RenderRepository
 from app.repositories.research import ResearchRepository
@@ -27,10 +28,12 @@ from app.schemas.domain import (
     CandidatePage,
     CandidateRead,
     CandidateStatus,
+    CaptionPlanRequest,
     CompositionStrategy,
     DiscoveryRequest,
     EvaluationRead,
     EventRead,
+    FinalRenderReviewRequest,
     Idea,
     ManualScoreRequest,
     NarrationRequest,
@@ -46,6 +49,8 @@ from app.schemas.domain import (
     ScriptStyle,
     VoiceSettings,
 )
+from app.services.captions.runtime import caption_plan_service, configured_final_render_service
+from app.services.captions.service import FinalRenderReviewService
 from app.services.discovery.queries import TemplateQueryGenerator
 from app.services.discovery.service import DiscoveryService
 from app.services.narration.runtime import configured_narration_service
@@ -171,9 +176,31 @@ def parser() -> argparse.ArgumentParser:
         if name == "render":
             action.add_argument("--force", action="store_true")
     render = commands.add_parser("render").add_subparsers(dest="action", required=True)
-    for name in ("show", "approve", "reject"):
+    for name in ("show", "caption-plan", "approve", "reject"):
         action = render.add_parser(name)
         action.add_argument("id", type=int)
+        if name == "caption-plan":
+            action.add_argument("--style", choices=("clean", "bold", "minimal"))
+            action.add_argument("--position", choices=("upper", "center", "lower"), default="lower")
+            action.add_argument("--emphasis", choices=("none", "phrase", "word"), default="phrase")
+            action.add_argument("--no-hook", action="store_true")
+            action.add_argument("--claim", type=int, action="append", default=[])
+            action.add_argument("--force", action="store_true")
+        if name in ("approve", "reject"):
+            action.add_argument("--reviewer", required=True)
+            action.add_argument("--notes", required=True)
+    caption_plan = commands.add_parser("caption-plan").add_subparsers(dest="action", required=True)
+    for name in ("show", "render"):
+        action = caption_plan.add_parser(name)
+        action.add_argument("id", type=int)
+        if name == "render":
+            action.add_argument("--force", action="store_true")
+    final_render = commands.add_parser("final-render").add_subparsers(dest="action", required=True)
+    for name in ("show", "preview", "approve", "reject"):
+        action = final_render.add_parser(name)
+        action.add_argument("id", type=int)
+        if name == "preview":
+            action.add_argument("--time", type=float, default=1.5)
         if name in ("approve", "reject"):
             action.add_argument("--reviewer", required=True)
             action.add_argument("--notes", required=True)
@@ -303,14 +330,53 @@ def main(argv: list[str] | None = None) -> int:
                         with configured_render_service(settings, session) as render_service:
                             result = render_service.render(args.id, force=args.force)
                 elif args.command == "render":
-                    render_review = RenderReviewService(repository, RenderRepository(session))
-                    if args.action == "show":
-                        result = render_review.get(args.id)
-                    else:
-                        result = render_review.review(
+                    if args.action == "caption-plan":
+                        result = caption_plan_service(settings, session).create(
                             args.id,
-                            RenderReviewRequest(
-                                decision="APPROVED" if args.action == "approve" else "REJECTED",
+                            CaptionPlanRequest(
+                                style_profile=args.style.upper() if args.style else None,
+                                position=args.position.upper(),
+                                emphasis_mode=args.emphasis.upper(),
+                                include_hook=not args.no_hook,
+                                factual_claim_ids=args.claim,
+                                force=args.force,
+                            ),
+                        )
+                    else:
+                        render_review = RenderReviewService(repository, RenderRepository(session))
+                        if args.action == "show":
+                            result = render_review.get(args.id)
+                        else:
+                            result = render_review.review(
+                                args.id,
+                                RenderReviewRequest(
+                                    decision=(
+                                        "APPROVED" if args.action == "approve" else "REJECTED"
+                                    ),
+                                    reviewer=args.reviewer,
+                                    notes=args.notes,
+                                ),
+                            )
+                elif args.command == "caption-plan":
+                    if args.action == "show":
+                        result = caption_plan_service(settings, session).get(args.id)
+                    else:
+                        with configured_final_render_service(settings, session) as final_service:
+                            result = final_service.render(args.id, force=args.force)
+                elif args.command == "final-render":
+                    final_review = FinalRenderReviewService(
+                        repository, RenderRepository(session), CaptionRepository(session)
+                    )
+                    if args.action == "show":
+                        result = final_review.get(args.id)
+                    elif args.action == "preview":
+                        with configured_final_render_service(settings, session) as final_service:
+                            result = final_service.preview(args.id, args.time)
+                    else:
+                        result = final_review.review(
+                            args.id,
+                            FinalRenderReviewRequest(
+                                decision=("APPROVED" if args.action == "approve" else "REJECTED"),
                                 reviewer=args.reviewer,
                                 notes=args.notes,
                             ),

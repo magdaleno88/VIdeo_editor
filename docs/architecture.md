@@ -12,6 +12,8 @@ Technical research is also synchronous and explicit. `TechnicalResearchService` 
 
 Verified scripting is synchronous and explicit. `ScriptGenerationService` requires a human-verified dossier, builds a bounded factual allowlist and visual timeline, then calls `ScriptGenerationProvider` for structured generation and structured sentence auditing. Local rules validate provenance, quantitative references, cautious language, clickbait, duration and visual overlap. `ScriptReviewService` handles reads and human decisions without provider credentials.
 
+Caption planning is deterministic and consumes the approved Phase 6 output, approved script sentences and persisted narration alignment. `CaptionPlanService` creates a final-output timeline with style and safe-area snapshots, while `ASSSubtitleRenderer` and `SRTSubtitleRenderer` serialize the plan without accepting arbitrary filter syntax. `FinalRenderService` reuses the existing FFmpeg process/probe boundary, stores a separate decorated MP4 and preview, and preserves the raw render unchanged. Only verified research claims may become factual overlays.
+
 Only implemented modules have code directories. Future modules described below will be added when their contracts can be verified. There are no placeholder production workers or fake AI implementations.
 
 ## Data model
@@ -186,6 +188,8 @@ erDiagram
     }
 ```
 
+Phase 7 adds `CaptionPlan`, ordered `CaptionItem`, `GraphicOverlay`, `FinalRenderAsset` and `FinalRenderReview` records. They retain sentence/beat/claim provenance, final-timeline timing, safe-area and style snapshots, ASS/SRT paths, checksums, renderer versions and human decisions without modifying `RenderAsset`.
+
 The complete candidate also contains title/description, preview/thumbnail links, author/profile, duration/dimensions/orientation, editorial object/process/category labels, and six current-score convenience fields. `score_evaluations` is append-only through the application and holds the reproducible history. Migration `0002` backfills the Phase 1 current score into that history. License fields exposed at candidate level are computed from the one-to-one rights record to avoid conflicting copies. Permissions are nullable: unknown is distinct from false.
 
 Candidate IDs are internal integers; provider IDs remain strings. The provider column is extensible text. Status enums use portable string check constraints; adding a state requires an Alembic migration and explicit transition-policy changes. Times are aware UTC, restored when SQLite omits timezone information. JSON stores portable evaluation/evidence snapshots. B-tree indexes support identity, provider, editorial filters, status/score and event lookup.
@@ -222,7 +226,7 @@ stateDiagram-v2
 
 Rendering checks current rights again before plan creation and execution; an earlier editorial approval does not substitute for an up-to-date rights check. Future workers and publishing integrations must keep that gate. Revocation still needs durable job cancellation and artifact quarantine when asynchronous jobs exist.
 
-## Full target pipeline (implemented through Phase 6)
+## Full target pipeline (implemented through Phase 7)
 
 ```mermaid
 flowchart TD
@@ -249,7 +253,7 @@ flowchart TD
 | --- | --- | --- |
 | `services/narration` | Approved script + voice configuration → checked local audio | `VoiceProfile`, `NarrationAsset`, alignment, checksum, duration status and human review |
 | `services/rendering` | Approved candidate/script/narration → planned and validated vertical MP4 | `VideoEditPlan`, `EditSegment`, `RenderAsset`, checksums, FFmpeg versions and review history |
-| Subtitles/graphics | Approved script/timing → accessible overlays | Caption cues, style versions, legibility/safe-area QA |
+| `services/captions` | Approved raw render + approved script/timing → accessible overlays and decorated MP4 | `CaptionPlan`, `CaptionItem`, `GraphicOverlay`, ASS/SRT, `FinalRenderAsset`, checksum, preview and review history |
 | Review/dashboard | Candidate and artifact evidence → decisions | Authenticated roles, immutable decision events, optimistic locking |
 | `services/publishing` | QA-approved export → platform post | `Publication`, platform ID, consent, idempotency key and status |
 | `services/analytics` | Platform metrics → evaluation feedback | `PerformanceSnapshot`, capture time, exposure context and experiment cohort |

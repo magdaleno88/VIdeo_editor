@@ -18,10 +18,16 @@ from app.schemas.domain import (
     AlignmentMethod,
     BeatKind,
     CandidateStatus,
+    CaptionPosition,
+    CaptionStyleProfile,
+    CaptionTimingMethod,
     ClaimStatus,
     CompositionStrategy,
     DurationStatus,
+    EmphasisMode,
     EvidenceRelation,
+    FinalRenderStatus,
+    GraphicOverlayType,
     KnowledgeType,
     NarrationStatus,
     Orientation,
@@ -601,6 +607,7 @@ class NarrationAlignment(Base):
         enum_column(AlignmentMethod, "narration_alignment_method")
     )
     confidence: Mapped[float | None]
+    word_timings: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, default=list)
 
 
 class NarrationReview(Base):
@@ -754,6 +761,173 @@ class RenderReview(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     render_id: Mapped[int] = mapped_column(
         ForeignKey("render_assets.id", ondelete="CASCADE"), index=True
+    )
+    decision: Mapped[str] = mapped_column(String(20))
+    reviewer: Mapped[str] = mapped_column(String(200))
+    notes: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+class CaptionPlan(Base):
+    __tablename__ = "caption_plans"
+    __table_args__ = (
+        Index("ix_caption_plan_render_created", "render_asset_id", "created_at"),
+        Index("ix_caption_plan_reuse", "cache_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    render_asset_id: Mapped[int] = mapped_column(
+        ForeignKey("render_assets.id", ondelete="CASCADE"), index=True
+    )
+    script_id: Mapped[int] = mapped_column(
+        ForeignKey("script_drafts.id", ondelete="RESTRICT"), index=True
+    )
+    narration_id: Mapped[int] = mapped_column(
+        ForeignKey("narration_assets.id", ondelete="RESTRICT"), index=True
+    )
+    language: Mapped[str] = mapped_column(String(10))
+    target_platform: Mapped[TargetPlatform] = mapped_column(
+        enum_column(TargetPlatform, "caption_target_platform")
+    )
+    style_profile: Mapped[CaptionStyleProfile] = mapped_column(
+        enum_column(CaptionStyleProfile, "caption_style_profile")
+    )
+    segmentation_strategy: Mapped[str] = mapped_column(String(40))
+    timing_method: Mapped[CaptionTimingMethod] = mapped_column(
+        enum_column(CaptionTimingMethod, "caption_timing_method")
+    )
+    emphasis_mode: Mapped[EmphasisMode] = mapped_column(
+        enum_column(EmphasisMode, "caption_emphasis_mode")
+    )
+    safe_area: Mapped[dict[str, float]] = mapped_column(JSON)
+    planner_version: Mapped[str] = mapped_column(String(40))
+    warnings: Mapped[list[str]] = mapped_column(JSON)
+    cache_key: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+    items: Mapped[list["CaptionItem"]] = relationship(
+        cascade="all, delete-orphan", order_by="CaptionItem.position"
+    )
+    overlays: Mapped[list["GraphicOverlay"]] = relationship(
+        cascade="all, delete-orphan", order_by="GraphicOverlay.z_index"
+    )
+    final_renders: Mapped[list["FinalRenderAsset"]] = relationship(cascade="all, delete-orphan")
+
+
+class CaptionItem(Base):
+    __tablename__ = "caption_items"
+    __table_args__ = (
+        UniqueConstraint("caption_plan_id", "position", name="uq_caption_item_position"),
+        CheckConstraint("end_seconds > start_seconds", name="ck_caption_item_interval"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    caption_plan_id: Mapped[int] = mapped_column(
+        ForeignKey("caption_plans.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int]
+    start_seconds: Mapped[float]
+    end_seconds: Mapped[float]
+    display_text: Mapped[str] = mapped_column(Text)
+    spoken_text: Mapped[str] = mapped_column(Text)
+    sentence_id: Mapped[int] = mapped_column(
+        ForeignKey("script_sentences.id", ondelete="RESTRICT"), index=True
+    )
+    beat_id: Mapped[int] = mapped_column(
+        ForeignKey("script_beats.id", ondelete="RESTRICT"), index=True
+    )
+    timing_method: Mapped[CaptionTimingMethod] = mapped_column(
+        enum_column(CaptionTimingMethod, "caption_item_timing_method")
+    )
+    position_name: Mapped[CaptionPosition] = mapped_column(
+        enum_column(CaptionPosition, "caption_position")
+    )
+    style: Mapped[dict[str, Any]] = mapped_column(JSON)
+    emphasis_spans: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+    characters_per_second: Mapped[float]
+    words_per_minute: Mapped[float]
+    warnings: Mapped[list[str]] = mapped_column(JSON)
+
+
+class GraphicOverlay(Base):
+    __tablename__ = "graphic_overlays"
+    __table_args__ = (
+        CheckConstraint("end_seconds > start_seconds", name="ck_graphic_overlay_interval"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    caption_plan_id: Mapped[int] = mapped_column(
+        ForeignKey("caption_plans.id", ondelete="CASCADE"), index=True
+    )
+    overlay_type: Mapped[GraphicOverlayType] = mapped_column(
+        enum_column(GraphicOverlayType, "graphic_overlay_type")
+    )
+    text: Mapped[str] = mapped_column(Text)
+    start_seconds: Mapped[float]
+    end_seconds: Mapped[float]
+    position_name: Mapped[CaptionPosition] = mapped_column(
+        enum_column(CaptionPosition, "graphic_overlay_position")
+    )
+    style_profile: Mapped[CaptionStyleProfile] = mapped_column(
+        enum_column(CaptionStyleProfile, "graphic_overlay_style")
+    )
+    claim_ids: Mapped[list[int]] = mapped_column(JSON)
+    beat_ids: Mapped[list[int]] = mapped_column(JSON)
+    z_index: Mapped[int]
+
+
+class FinalRenderAsset(Base):
+    __tablename__ = "final_render_assets"
+    __table_args__ = (
+        Index("ix_final_render_plan_created", "caption_plan_id", "created_at"),
+        Index("ix_final_render_reuse", "cache_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    caption_plan_id: Mapped[int] = mapped_column(
+        ForeignKey("caption_plans.id", ondelete="CASCADE"), index=True
+    )
+    raw_render_id: Mapped[int] = mapped_column(
+        ForeignKey("render_assets.id", ondelete="RESTRICT"), index=True
+    )
+    output_path: Mapped[str | None] = mapped_column(String(500), unique=True)
+    ass_path: Mapped[str | None] = mapped_column(String(500), unique=True)
+    srt_path: Mapped[str | None] = mapped_column(String(500), unique=True)
+    preview_path: Mapped[str | None] = mapped_column(String(500), unique=True)
+    width: Mapped[int | None]
+    height: Mapped[int | None]
+    fps: Mapped[float | None]
+    duration: Mapped[float | None]
+    video_codec: Mapped[str | None] = mapped_column(String(80))
+    audio_codec: Mapped[str | None] = mapped_column(String(80))
+    file_size_bytes: Mapped[int | None]
+    checksum_sha256: Mapped[str | None] = mapped_column(String(64))
+    render_version: Mapped[str] = mapped_column(String(40))
+    subtitle_renderer_version: Mapped[str] = mapped_column(String(40))
+    ffmpeg_version: Mapped[str | None] = mapped_column(String(200))
+    status: Mapped[FinalRenderStatus] = mapped_column(
+        enum_column(FinalRenderStatus, "final_render_status"), index=True
+    )
+    warnings: Mapped[list[str]] = mapped_column(JSON)
+    cache_key: Mapped[str] = mapped_column(String(64), index=True)
+    failure_reason: Mapped[str] = mapped_column(Text, default="")
+    process_exit_code: Mapped[int | None]
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    reviewed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    reviewed_by: Mapped[str | None] = mapped_column(String(200))
+    review_notes: Mapped[str] = mapped_column(Text, default="")
+
+    reviews: Mapped[list["FinalRenderReview"]] = relationship(
+        cascade="all, delete-orphan", order_by="FinalRenderReview.created_at"
+    )
+
+
+class FinalRenderReview(Base):
+    __tablename__ = "final_render_reviews"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    final_render_id: Mapped[int] = mapped_column(
+        ForeignKey("final_render_assets.id", ondelete="CASCADE"), index=True
     )
     decision: Mapped[str] = mapped_column(String(20))
     reviewer: Mapped[str] = mapped_column(String(200))

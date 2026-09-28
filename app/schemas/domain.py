@@ -914,6 +914,7 @@ class NarrationAlignmentRead(Contract):
     end_seconds: float
     method: AlignmentMethod
     confidence: float | None
+    word_timings: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class NarrationBeatTiming(Contract):
@@ -1090,4 +1091,159 @@ class RenderAssetRead(Contract):
 
 class RenderResponse(Contract):
     render: RenderAssetRead
+    reused: bool
+
+
+class CaptionStyleProfile(StrEnum):
+    CLEAN = "CLEAN"
+    BOLD = "BOLD"
+    MINIMAL = "MINIMAL"
+
+
+class CaptionPosition(StrEnum):
+    UPPER = "UPPER"
+    CENTER = "CENTER"
+    LOWER = "LOWER"
+
+
+class CaptionTimingMethod(StrEnum):
+    PROVIDER_ALIGNMENT = "PROVIDER_ALIGNMENT"
+    SENTENCE_ALIGNMENT = "SENTENCE_ALIGNMENT"
+    ESTIMATED_ALIGNMENT = "ESTIMATED_ALIGNMENT"
+
+
+class EmphasisMode(StrEnum):
+    NONE = "NONE"
+    PHRASE = "PHRASE"
+    WORD = "WORD"
+
+
+class GraphicOverlayType(StrEnum):
+    HOOK_TEXT = "HOOK_TEXT"
+    INFO_LABEL = "INFO_LABEL"
+    BRANDING = "BRANDING"
+
+
+class FinalRenderStatus(StrEnum):
+    RENDERING = "RENDERING"
+    VALIDATED = "VALIDATED"
+    NEEDS_REVIEW = "NEEDS_REVIEW"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    FAILED = "FAILED"
+
+
+class CaptionPlanRequest(Contract):
+    style_profile: CaptionStyleProfile | None = None
+    position: CaptionPosition = CaptionPosition.LOWER
+    emphasis_mode: EmphasisMode = EmphasisMode.PHRASE
+    include_hook: bool = True
+    factual_claim_ids: list[int] = Field(default_factory=list, max_length=10)
+    force: bool = False
+
+
+class FinalRenderRequest(Contract):
+    force: bool = False
+
+
+class PreviewRequest(Contract):
+    time_seconds: float = Field(1.5, ge=0)
+
+
+class FinalRenderReviewRequest(ReviewAction):
+    decision: Literal["APPROVED", "REJECTED"]
+
+
+class CaptionItemRead(Contract):
+    id: int
+    position: int
+    start_seconds: float
+    end_seconds: float
+    display_text: str
+    spoken_text: str
+    sentence_id: int
+    beat_id: int
+    timing_method: CaptionTimingMethod
+    position_name: CaptionPosition
+    style: dict[str, Any]
+    emphasis_spans: list[dict[str, Any]]
+    characters_per_second: float
+    words_per_minute: float
+    warnings: list[str]
+
+
+class GraphicOverlayRead(Contract):
+    id: int
+    overlay_type: GraphicOverlayType
+    text: str
+    start_seconds: float
+    end_seconds: float
+    position_name: CaptionPosition
+    style_profile: CaptionStyleProfile
+    claim_ids: list[int]
+    beat_ids: list[int]
+    z_index: int
+
+
+class CaptionPlanRead(Contract):
+    id: int
+    render_asset_id: int
+    script_id: int
+    narration_id: int
+    language: str
+    target_platform: TargetPlatform
+    style_profile: CaptionStyleProfile
+    segmentation_strategy: str
+    timing_method: CaptionTimingMethod
+    emphasis_mode: EmphasisMode
+    safe_area: dict[str, float]
+    planner_version: str
+    warnings: list[str]
+    cache_key: str
+    created_at: datetime
+    items: list[CaptionItemRead]
+    overlays: list[GraphicOverlayRead]
+
+
+class FinalRenderReviewRead(Contract):
+    id: int
+    decision: Literal["APPROVED", "REJECTED"]
+    reviewer: str
+    notes: str
+    created_at: datetime
+
+
+class FinalRenderAssetRead(Contract):
+    id: int
+    caption_plan_id: int
+    raw_render_id: int
+    output_path: str | None
+    ass_path: str | None
+    srt_path: str | None
+    preview_path: str | None
+    width: int | None
+    height: int | None
+    fps: float | None
+    duration: float | None
+    video_codec: str | None
+    audio_codec: str | None
+    file_size_bytes: int | None
+    checksum_sha256: str | None
+    render_version: str
+    subtitle_renderer_version: str
+    ffmpeg_version: str | None
+    status: FinalRenderStatus
+    warnings: list[str]
+    cache_key: str
+    failure_reason: str
+    process_exit_code: int | None
+    created_at: datetime
+    reviewed_at: datetime | None
+    reviewed_by: str | None
+    review_notes: str
+    reviews: list[FinalRenderReviewRead]
+
+
+class FinalRenderResponse(Contract):
+    render: FinalRenderAssetRead
     reused: bool

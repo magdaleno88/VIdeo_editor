@@ -79,6 +79,25 @@ class Settings(BaseSettings):
     render_clip_pre_roll_ms: int = Field(150, ge=0, le=1000)
     render_clip_post_roll_ms: int = Field(150, ge=0, le=1000)
     render_max_file_size_mb: int = Field(150, ge=1, le=1000)
+    caption_storage_root: str = "data/captions"
+    caption_font_path: str = ""
+    caption_default_style: Literal["CLEAN", "BOLD", "MINIMAL"] = "CLEAN"
+    caption_min_words: int = Field(2, ge=1, le=10)
+    caption_max_words: int = Field(7, ge=2, le=15)
+    caption_max_characters: int = Field(42, ge=10, le=100)
+    caption_max_lines: int = Field(2, ge=1, le=3)
+    caption_linger_ms: int = Field(120, ge=0, le=1000)
+    caption_max_characters_per_second: float = Field(20, ge=8, le=40)
+    caption_safe_margin_top: float = Field(0.08, ge=0, le=0.4)
+    caption_safe_margin_bottom: float = Field(0.18, ge=0, le=0.4)
+    caption_safe_margin_left: float = Field(0.08, ge=0, le=0.4)
+    caption_safe_margin_right: float = Field(0.16, ge=0, le=0.4)
+    caption_word_highlight_enabled: bool = True
+    caption_max_emphasis_per_item: int = Field(2, ge=0, le=5)
+    graphics_branding_enabled: bool = False
+    branding_asset_path: str = ""
+    branding_channel_name: str = ""
+    branding_opacity: float = Field(0.7, ge=0.1, le=1)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     scoring_weights: ScoringWeights = Field(default_factory=ScoringWeights)
 
@@ -90,4 +109,6 @@ class Settings(BaseSettings):
             raise ValueError("RESEARCH_MAX_PAGES cannot exceed RESEARCH_MAX_SOURCES")
         if self.render_min_playback_speed > self.render_max_playback_speed:
             raise ValueError("RENDER_MIN_PLAYBACK_SPEED cannot exceed the maximum")
+        if self.caption_min_words > self.caption_max_words:
+            raise ValueError("CAPTION_MIN_WORDS cannot exceed CAPTION_MAX_WORDS")
         return self

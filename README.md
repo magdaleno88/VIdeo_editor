@@ -1,6 +1,6 @@
 # Industrial Content Factory
 
-A local, semi-automated backend for discovering industrial-process videos and building human-reviewed educational short-form content. Phases 1–6 implement **discovery, rights review, scoring, AI visual analysis, claim-centric research, traceable scripts, approved narration and deterministic vertical-video assembly**. It does not publish or remove watermarks from videos.
+A local, semi-automated backend for discovering industrial-process videos and building human-reviewed educational short-form content. Phases 1–7 implement **discovery, rights review, scoring, AI visual analysis, claim-centric research, traceable scripts, approved narration, deterministic vertical-video assembly, captions and graphics**. It does not publish or remove watermarks from videos.
 
 ## Features
 
@@ -17,6 +17,7 @@ A local, semi-automated backend for discovering industrial-process videos and bu
 - Generate Spanish, beat-based Facebook Reels scripts only from reviewed claims and Phase 2 visual evidence, with sentence-level provenance and human approval.
 - Generate a single checked narration asset from an approved script through the configured ElevenLabs voice, with stored checksum, timing, cache identity and separate human review.
 - Build an inspectable edit plan from approved visual references and narration timing, then render and validate a versioned vertical H.264/AAC MP4 with FFmpeg.
+- Build captions from approved script sentences and narration alignment, generate UTF-8 ASS/SRT, add safe-area hook/verified-fact graphics, render a separate decorated MP4 and review it independently.
 - Review rights with evidence, approve/reject candidates, and keep an audit history. Unverified rights block approval.
 - Use the same services through FastAPI, interactive OpenAPI docs and a JSON-output CLI.
 
@@ -49,12 +50,16 @@ flowchart LR
     Rendering --> FFmpeg[FFmpeg + ffprobe]
     Rendering --> Output[Atomic MP4 storage]
     Rendering --> Repository
+    API --> Captions[CaptionPlanService]
+    Captions --> Subtitles[ASS + SRT]
+    Captions --> Final[Decorated MP4 + preview]
+    Final --> Repository
     Review --> Rights[Rights policy]
     Review --> Repository
     Repository --> DB[(SQLite / PostgreSQL-ready schema)]
 ```
 
-See [full pipeline architecture](docs/architecture.md), [provider integration notes](docs/providers.md), [scoring semantics](docs/scoring.md), [technical research](docs/research.md), [verified scripting](docs/scripting.md), [narration](docs/tts.md), [rendering](docs/rendering.md), and [the ten-phase roadmap](docs/roadmap.md).
+See [full pipeline architecture](docs/architecture.md), [provider integration notes](docs/providers.md), [scoring semantics](docs/scoring.md), [technical research](docs/research.md), [verified scripting](docs/scripting.md), [narration](docs/tts.md), [rendering](docs/rendering.md), [captions and graphics](docs/captions.md), and [the ten-phase roadmap](docs/roadmap.md).
 
 ## Installation
 
@@ -138,6 +143,19 @@ Edit `.env` locally. Never commit real credentials.
 | `RENDER_MIN_PLAYBACK_SPEED` / `RENDER_MAX_PLAYBACK_SPEED` | `0.80` / `1.25`; conservative planning bounds |
 | `RENDER_CLIP_PRE_ROLL_MS` / `RENDER_CLIP_POST_ROLL_MS` | `150` / `150`; bounded visual context |
 | `RENDER_MAX_FILE_SIZE_MB` | `150`; final MP4 limit |
+| `CAPTION_STORAGE_ROOT` | `data/captions`; ignored ASS/SRT storage |
+| `CAPTION_FONT_PATH` | Empty; optional local TTF/OTF/TTC used only for decorated renders |
+| `CAPTION_DEFAULT_STYLE` | `CLEAN`; reusable `CLEAN`, `BOLD` or `MINIMAL` profile |
+| `CAPTION_MIN_WORDS` / `CAPTION_MAX_WORDS` | `2` / `7`; deterministic segmentation window |
+| `CAPTION_MAX_CHARACTERS` / `CAPTION_MAX_LINES` | `42` / `2`; mobile wrapping bounds |
+| `CAPTION_LINGER_MS` | `120`; bounded post-speech visibility before a pause |
+| `CAPTION_MAX_CHARACTERS_PER_SECOND` | `20`; warning threshold for reading speed |
+| `CAPTION_SAFE_MARGIN_*` | Relative Facebook Reels margins that scale with output resolution |
+| `CAPTION_WORD_HIGHLIGHT_ENABLED` | `true`; still requires provider alignment |
+| `CAPTION_MAX_EMPHASIS_PER_ITEM` | `2`; limits highlight density |
+| `GRAPHICS_BRANDING_ENABLED` | `false`; optional branding is opt-in |
+| `BRANDING_ASSET_PATH` / `BRANDING_CHANNEL_NAME` | Empty; optional checked local logo and text |
+| `BRANDING_OPACITY` | `0.70`; normalized logo opacity |
 | `LOG_LEVEL` | `INFO`; application events use JSON logging on stderr |
 | `SCORING_WEIGHTS__<DIMENSION>` | Override a score weight; the total must remain 100 |
 
@@ -195,6 +213,13 @@ Replace candidate ID `15` with an ID returned by discovery:
 .\.venv\Scripts\python.exe -m app render show 3
 .\.venv\Scripts\python.exe -m app render approve 3 --reviewer "Your name" --notes "Framing checked"
 .\.venv\Scripts\python.exe -m app render reject 3 --reviewer "Your name" --notes "Important machine cropped"
+.\.venv\Scripts\python.exe -m app render caption-plan 3 --style clean --emphasis phrase
+.\.venv\Scripts\python.exe -m app caption-plan show 4
+.\.venv\Scripts\python.exe -m app caption-plan render 4
+.\.venv\Scripts\python.exe -m app final-render show 5
+.\.venv\Scripts\python.exe -m app final-render preview 5 --time 1.5
+.\.venv\Scripts\python.exe -m app final-render approve 5 --reviewer "Your name" --notes "Captions checked"
+.\.venv\Scripts\python.exe -m app final-render reject 5 --reviewer "Your name" --notes "Caption covers machinery"
 .\.venv\Scripts\python.exe -m app candidate score 15 --file examples/manual-score.json
 .\.venv\Scripts\python.exe -m app candidate rights 15 --file examples/rights-review.json
 .\.venv\Scripts\python.exe -m app candidate approve 15 --reviewer "Your name" --notes "Source and educational use reviewed"
@@ -242,6 +267,14 @@ The query generator translates a small industrial vocabulary, including screws, 
 | `GET` | `/renders/{render_id}` | Read render validation, checksum and status |
 | `POST` | `/renders/{render_id}/approve` | Human render approval |
 | `POST` | `/renders/{render_id}/reject` | Human render rejection |
+| `POST` | `/renders/{render_id}/caption-plans` | Create/reuse a caption and graphics plan |
+| `GET` | `/renders/{render_id}/caption-plans` | List caption-plan history |
+| `GET` | `/caption-plans/{plan_id}` | Inspect caption timing, styles and overlays |
+| `POST` | `/caption-plans/{plan_id}/render` | Render ASS captions/graphics into a separate MP4 |
+| `GET` | `/final-renders/{render_id}` | Read decorated render metadata and review history |
+| `POST` | `/final-renders/{render_id}/preview` | Generate a preview frame |
+| `POST` | `/final-renders/{render_id}/approve` | Human final-render approval |
+| `POST` | `/final-renders/{render_id}/reject` | Human final-render rejection |
 | `POST` | `/candidates/{id}/approve` | Human approval gated by rights |
 | `POST` | `/candidates/{id}/reject` | Human rejection |
 | `GET` | `/candidates/{id}/history` | Ordered audit events |
@@ -315,6 +348,12 @@ Planning requires an approved candidate with currently verified rights, an appro
 
 Rendering reacquires the known provider preview through the Phase 2 safety policy, uses the exact approved narration, mutes source audio, converts without stretching to `CENTER_CROP`, `FIT` or optional `BLURRED_BACKGROUND`, and validates the result with structured ffprobe JSON. The default output is 1080×1920 H.264/AAC MP4. Files are finalized atomically under `RENDER_STORAGE_ROOT`, checksummed and never silently overwritten. See [rendering details](docs/rendering.md).
 
+## Captions and final graphics
+
+Caption planning requires a human-approved raw render. It uses approved `display_text`, preserves the matching `spoken_text` reference, and maps narration alignment directly onto the final output timeline. Punctuation-aware segmentation protects number/unit pairs and common technical terms, while reading-speed warnings, two-line wrapping and relative Facebook Reels safe areas support manual QA.
+
+The plan produces escaped UTF-8 ASS and SRT assets. Hook text comes from the approved script; factual labels require a `VERIFIED` research claim from that script's dossier. Optional branding is disabled by default. FFmpeg creates a separate immutable decorated MP4, ffprobe validates it, and a human approves or rejects the `FinalRenderAsset`. See [captions and graphics](docs/captions.md).
+
 ## Verification
 
 ```powershell
@@ -325,6 +364,7 @@ Rendering reacquires the known provider preview through the Phase 2 safety polic
 .\.venv\Scripts\python.exe -m pip check
 .\.venv\Scripts\python.exe scripts/smoke.py
 .\.venv\Scripts\python.exe scripts/live_render_smoke.py
+.\.venv\Scripts\python.exe scripts/live_caption_smoke.py
 ```
 
 Tests mock provider responses using `httpx.MockTransport` and block non-loopback socket connections. Coverage includes queries, normalization, provider failures, persistence, duplicate races, rollback, scoring, rights validation, state transitions, API/CLI behavior, cache expiration and migrations. The smoke script runs a real loopback server against a temporary migrated database, checks basic routes, and stops it. Neither tests nor smoke checks use API keys or contact the catalogs.
@@ -346,6 +386,7 @@ app/
     scripting/         Factual allowlist, visual planning, generation, validation and review
     narration/         Audio validation, atomic storage, timing and narration review
     rendering/         Edit planning, safe execution, validation, storage and review
+    captions/          Caption planning, ASS/SRT, final rendering, preview and review
     video/             Restricted temporary candidate-asset acquisition
     rights/            Shared eligibility policy
     review.py          Human review and audit events
@@ -363,4 +404,4 @@ docs/                  Architecture, providers, scoring, roadmap and verificatio
 
 Authenticated catalog searches, Brave research searches and live Gemini calls require keys and were not verified in this delivery. The document fetcher currently accepts HTTPS HTML/XHTML/plain text; PDF extraction is deliberately unsupported. Script entailment combines a model audit with deterministic provenance rules rather than formal semantic proof. Source tiers use conservative domain rules and require human review. Preview URLs and web pages can expire. SQLite and self-reported reviewer identities are not a multi-user production solution.
 
-The next logical module is **Phase 7: subtitles and graphics**, consuming approved render timelines. It is described in [the roadmap](docs/roadmap.md).
+The next logical module is **Phase 8: the human approval dashboard**, presenting the existing evidence and artifact review contracts without adding publishing. It is described in [the roadmap](docs/roadmap.md).

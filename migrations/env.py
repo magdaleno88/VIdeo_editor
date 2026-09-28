@@ -4,7 +4,12 @@ from app.core.config import Settings
 from app.core.database import Base, UTCDateTime, build_engine
 from app.models import (  # noqa: F401
     CandidateEvent,
+    CaptionItem,
+    CaptionPlan,
     EditSegment,
+    FinalRenderAsset,
+    FinalRenderReview,
+    GraphicOverlay,
     NarrationAlignment,
     NarrationAsset,
     NarrationReview,

@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import uuid
 
 from app.core.database import utcnow
@@ -182,6 +183,14 @@ class NarrationService:
         if alignment and self._is_usable_alignment(text, alignment, duration):
             rows = []
             for sentence, start, end in spans:
+                word_timings = [
+                    {
+                        "text": match.group(),
+                        "start_seconds": alignment.starts[start + match.start()],
+                        "end_seconds": alignment.ends[start + match.end() - 1],
+                    }
+                    for match in re.finditer(r"\S+", text[start:end])
+                ]
                 rows.append(
                     NarrationAlignment(
                         sentence_id=sentence.id,
@@ -190,6 +199,7 @@ class NarrationService:
                         end_seconds=alignment.ends[end - 1],
                         method=AlignmentMethod.PROVIDER_ALIGNMENT,
                         confidence=1.0,
+                        word_timings=word_timings,
                     )
                 )
             return rows, AlignmentMethod.PROVIDER_ALIGNMENT
@@ -207,6 +217,7 @@ class NarrationService:
                     end_seconds=end,
                     method=AlignmentMethod.ESTIMATED_ALIGNMENT,
                     confidence=0.4,
+                    word_timings=[],
                 )
             )
             cursor = end

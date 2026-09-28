@@ -34,7 +34,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         description=(
             "Local discovery, transparent visual scoring, source-backed research, "
             "verified scripts, "
-            "approved narration, deterministic video assembly and human review."
+            "approved narration, deterministic video assembly, captions, graphics "
+            "and human review."
         ),
     )
     application.state.settings = settings

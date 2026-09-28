@@ -2,7 +2,7 @@ from sqlalchemy import Engine, inspect, text
 
 from app.core.errors import ConfigurationError
 
-SCHEMA_REVISION = "0006"
+SCHEMA_REVISION = "0007"
 
 
 def check_schema(engine: Engine) -> None:
