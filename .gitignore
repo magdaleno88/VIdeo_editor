@@ -1,0 +1,24 @@
+# Local environment
+.env
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Local tools / binaries
+.tools/
+
+# Generated runtime data
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+data/*
+!data/.gitkeep
+data/audio/
+data/renders/
+

@@ -1,0 +1,18 @@
+{
+  "page": 1,
+  "per_page": 10,
+  "total_results": 1,
+  "videos": [{
+    "id": 101,
+    "url": "https://www.pexels.com/video/industrial-machine-cutting-metal-101/",
+    "image": "https://images.pexels.com/videos/101/preview.jpeg",
+    "width": 1920,
+    "height": 1080,
+    "duration": 18,
+    "user": {"name": "Fixture Creator", "url": "https://www.pexels.com/@fixture"},
+    "video_files": [
+      {"file_type": "video/mp4", "width": 1920, "height": 1080, "link": "https://example.org/fixture-hd.mp4"},
+      {"file_type": "video/mp4", "width": 640, "height": 360, "link": "https://example.org/fixture-preview.mp4"}
+    ]
+  }]
+}

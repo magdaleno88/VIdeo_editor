@@ -1,0 +1,17 @@
+{
+  "total": 1,
+  "totalHits": 1,
+  "hits": [{
+    "id": 202,
+    "pageURL": "https://pixabay.com/videos/id-202/",
+    "tags": "factory, conveyor, production",
+    "duration": 25,
+    "user": "Fixture Creator",
+    "user_id": 3,
+    "videos": {
+      "large": {"url": "", "width": 0, "height": 0},
+      "medium": {"url": "https://example.org/fixture-portrait.mp4", "width": 1080, "height": 1920, "thumbnail": "https://example.org/fixture-portrait.jpg"},
+      "tiny": {"url": "https://example.org/fixture-tiny.mp4", "width": 360, "height": 640, "thumbnail": "https://example.org/fixture-tiny.jpg"}
+    }
+  }]
+}

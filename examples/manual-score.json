@@ -1,0 +1,14 @@
+{
+  "reviewer": "Replace with your name",
+  "notes": "Replace these example scores after watching the clip.",
+  "inputs": {
+    "movement": 70,
+    "visible_transformation": 80,
+    "satisfying_result": 60,
+    "unusual_machinery": 50,
+    "understandable_without_audio": 70,
+    "visual_hook": 60,
+    "educational_potential": 90,
+    "loop_potential": 50
+  }
+}
