@@ -15,6 +15,21 @@
   </aside>
 </div>
 
+<section class="panel">
+  <div class="section-heading"><h2>Structured final quality review</h2><span>Human decision · 1–5 scoring</span></div>
+  <p><a class="button" href="/downloads/final-render/{{ render.id }}.mp4">Download MP4</a>{% if render.srt_path %} <a class="button" href="/downloads/final-render/{{ render.id }}.srt">Download SRT</a>{% endif %}</p>
+  <form method="post" action="/dashboard/final-renders/{{ render.id }}/quality-review" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_to" value="/dashboard/final-renders/{{ render.id }}">
+    <label>Reviewer<input name="reviewer" value="{{ default_reviewer }}" required></label>
+    <label>Decision<select name="decision" required><option value="">Choose…</option><option value="APPROVED">Approve</option><option value="REJECTED">Reject</option></select></label>
+    {% for key, label in [('visual_relevance','Visual relevance'),('pacing','Pacing'),('crop_quality','Crop quality'),('narration_quality','Narration quality'),('caption_readability','Caption readability'),('hook_strength','Hook strength'),('audio_sync','Audio sync'),('overall_readiness','Overall readiness')] %}<label>{{ label }}<select name="{{ key }}" required><option value="">Score…</option>{% for score in range(1,6) %}<option value="{{ score }}">{{ score }}</option>{% endfor %}</select></label>{% endfor %}
+    <fieldset><legend>Checklist</legend>{% for key, label in [('first_two_seconds_interesting','First two seconds are interesting'),('visuals_match_narration','Visuals match narration'),('important_parts_visible','Important parts stay visible'),('narration_pacing_natural','Narration pacing is natural'),('captions_readable','Captions are readable'),('captions_preserve_visuals','Captions preserve key visuals'),('hook_makes_sense','Hook makes sense'),('facts_consistent','Facts are consistent'),('cuts_and_loops_natural','Cuts and loops feel natural'),('audio_synchronized','Audio is synchronized'),('ready_to_publish','Ready to publish')] %}<label><input type="checkbox" name="{{ key }}" value="true"> {{ label }}</label>{% endfor %}</fieldset>
+    <fieldset><legend>Rejection categories</legend>{% for value in ['BAD_CROP','BAD_CLIP_SELECTION','WEAK_HOOK','PACING_TOO_SLOW','PACING_TOO_FAST','CAPTION_PROBLEM','TTS_PROBLEM','VISUAL_NARRATION_MISMATCH','FACTUAL_PROBLEM','AUDIO_SYNC','OTHER'] %}<label><input type="checkbox" name="category_{{ value }}" value="true"> {{ value|replace('_',' ')|title }}</label>{% endfor %}</fieldset>
+    <label>Notes<textarea name="notes" maxlength="4000"></textarea></label><button class="button primary" type="submit">Record quality review</button>
+  </form>
+  {% if quality_reviews %}<h3>Review history</h3><div class="version-grid">{% for review in quality_reviews %}<article class="version-card"><strong>{{ review.decision }} · {{ review.overall_readiness }}/5</strong><small>{{ review.reviewer }} · {{ review.created_at.strftime('%Y-%m-%d %H:%M') }}</small>{% if review.recommended_revision_stage %}<span>Revise from {{ review.recommended_revision_stage.value|replace('_',' ')|title }}</span>{% endif %}{% if review.notes %}<p>{{ review.notes }}</p>{% endif %}</article>{% endfor %}</div>{% endif %}
+</section>
+
 <div class="two-column">
 <section class="panel">
   <div class="section-heading"><h2>Caption timeline</h2><span>{{ plan.items|length }} items</span></div>
@@ -29,7 +44,7 @@
 
 <section class="panel">
   <div class="section-heading"><h2>Versions</h2><span>{{ versions|length }} available</span></div>
-  <div class="version-grid">{% for version in versions %}<a class="version-card {{ 'current' if version.id == render.id }}" href="/dashboard/final-renders/{{ version.id }}"><strong>Version #{{ version.id }}</strong>{{ badge(version.status) }}<small>{{ version.dashboard_style.value }} · {{ version.created_at.strftime('%Y-%m-%d %H:%M') }}</small><span>{{ version.checksum_sha256[:12] if version.checksum_sha256 else 'No checksum' }}</span></a>{% endfor %}</div>
+  <div class="version-grid">{% for version in versions %}<a class="version-card {{ 'current' if version.id == render.id }}" href="/dashboard/final-renders/{{ version.id }}"><strong>Version #{{ version.id }}</strong>{{ badge(version.status) }}<small>{{ version.dashboard_style.value }} · {{ version.created_at.strftime('%Y-%m-%d %H:%M') }}</small><span>{{ version.checksum_sha256[:12] if version.checksum_sha256 else 'No checksum' }}{% if version.dashboard_quality_review %} · quality {{ version.dashboard_quality_review.overall_readiness }}/5{% endif %}</span></a>{% endfor %}</div>
   {% if playable_versions|length > 1 %}<details><summary>Side-by-side comparison</summary><div class="comparison">{{ video_player('/media/final-render/' ~ playable_versions[0].id, 'compare-a', '', true) }}{{ video_player('/media/final-render/' ~ playable_versions[1].id, 'compare-b', '', true) }}</div></details>{% endif %}
 </section>
 {% endblock %}

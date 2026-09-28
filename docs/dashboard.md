@@ -35,6 +35,9 @@ The main routes are:
 | `/dashboard/review-queue` | Reviewable rights, research, scripts, narrations and renders |
 | `/dashboard/final-renders/{id}` | Portrait visual review, caption timeline, versions and decision forms |
 | `/dashboard/failures` | Recent persisted narration/render failures with safe summaries |
+| `/dashboard/pilots` | Create and list local pilot batches |
+| `/dashboard/pilots/{id}` | Batch state, quality averages and rejection reasons |
+| `/dashboard/pilots/{id}/candidates/{candidate_id}` | Full checklist, blocker, next action, calls, versions and warnings |
 
 Existing `/docs`, REST endpoints and CLI commands remain available.
 
@@ -57,6 +60,8 @@ The review queue prioritizes final renders and can be filtered by stage. Review 
 - raw-render approval/rejection;
 - final-render approval/rejection.
 
+The final-render screen also records the Phase 8B structured review: eight 1–5 scores, eleven checklist items, rejection categories, notes and an automatically recommended revision stage. This record is separate from the basic transition audit while driving the same final-render status.
+
 Approval notes may be omitted; the dashboard records a short local-dashboard note to satisfy the existing audit contract. Rejection always requires a reason. Service-level transition checks remain authoritative and safe errors return to the screen without exposing tracebacks or secrets.
 
 ## Media serving
@@ -69,6 +74,8 @@ The browser uses native `<audio>` and `<video>` controls. Media routes accept on
 - `/media/preview/{id}`
 
 Each route loads a known persistent record, resolves its stored relative path below the configured audio/render root, rejects absolute paths and traversal, verifies that the file exists and returns a fixed MIME type. There is no generic path-based download route. Starlette `FileResponse` supports HTTP byte ranges in the installed runtime, allowing video seeking.
+
+Pilot exports use `/downloads/final-render/{id}.mp4` and `/downloads/final-render/{id}.srt`. Both resolve a known database record below its configured storage root and set a safe generated filename.
 
 Caption rows, script beats and visual evidence expose timestamp buttons. The small dashboard script seeks an existing player to that final/output or source timestamp. It does not implement an editing timeline.
 
@@ -99,4 +106,4 @@ Run the focused tests and real local HTTP smoke:
 .\.venv\Scripts\python.exe scripts/live_dashboard_smoke.py
 ```
 
-The smoke starts an actual Uvicorn server on a temporary loopback port, uses a migrated temporary database and test fixture, serves the real Phase 7 caption smoke MP4/PNG, exercises the main pages and media routes, and submits a CSRF-protected final-render approval. It makes no external API calls.
+The smoke starts an actual Uvicorn server on a temporary loopback port, uses a migrated temporary database and five-candidate synthetic pilot, serves the real Phase 7 caption smoke MP4/PNG, exercises the main pages and downloads, and submits a CSRF-protected structured quality approval. It makes no external API calls.

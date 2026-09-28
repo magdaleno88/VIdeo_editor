@@ -31,8 +31,10 @@ from app.schemas.domain import (
     KnowledgeType,
     NarrationStatus,
     Orientation,
+    QualityRejectionCategory,
     RenderStatus,
     ResearchStatus,
+    RevisionStage,
     RightsStatus,
     ScriptFactualityType,
     ScriptStatus,
@@ -109,6 +111,9 @@ class VideoCandidate(Base):
     script_drafts: Mapped[list["ScriptDraft"]] = relationship(cascade="all, delete-orphan")
     edit_plans: Mapped[list["VideoEditPlan"]] = relationship(cascade="all, delete-orphan")
     render_assets: Mapped[list["RenderAsset"]] = relationship(cascade="all, delete-orphan")
+    pilot_runs: Mapped[list["PilotRun"]] = relationship(
+        back_populates="candidate", cascade="all, delete-orphan"
+    )
 
     @property
     def license_name(self) -> str | None:
@@ -920,6 +925,9 @@ class FinalRenderAsset(Base):
     reviews: Mapped[list["FinalRenderReview"]] = relationship(
         cascade="all, delete-orphan", order_by="FinalRenderReview.created_at"
     )
+    quality_reviews: Mapped[list["FinalRenderQualityReview"]] = relationship(
+        cascade="all, delete-orphan", order_by="FinalRenderQualityReview.created_at"
+    )
 
 
 class FinalRenderReview(Base):
@@ -932,4 +940,76 @@ class FinalRenderReview(Base):
     decision: Mapped[str] = mapped_column(String(20))
     reviewer: Mapped[str] = mapped_column(String(200))
     notes: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+class PilotBatch(Base):
+    __tablename__ = "pilot_batches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+    runs: Mapped[list["PilotRun"]] = relationship(
+        cascade="all, delete-orphan", order_by="PilotRun.created_at"
+    )
+
+
+class PilotRun(Base):
+    __tablename__ = "pilot_runs"
+    __table_args__ = (
+        UniqueConstraint("batch_id", "candidate_id", name="uq_pilot_run_batch_candidate"),
+        Index("ix_pilot_run_batch_created", "batch_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(
+        ForeignKey("pilot_batches.id", ondelete="CASCADE"), index=True
+    )
+    candidate_id: Mapped[int] = mapped_column(
+        ForeignKey("video_candidates.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+    candidate: Mapped[VideoCandidate] = relationship(back_populates="pilot_runs")
+
+
+class FinalRenderQualityReview(Base):
+    __tablename__ = "final_render_quality_reviews"
+    __table_args__ = tuple(
+        CheckConstraint(f"{field} >= 1 AND {field} <= 5", name=f"ck_quality_{field}")
+        for field in (
+            "visual_relevance",
+            "pacing",
+            "crop_quality",
+            "narration_quality",
+            "caption_readability",
+            "hook_strength",
+            "audio_sync",
+            "overall_readiness",
+        )
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    final_render_id: Mapped[int] = mapped_column(
+        ForeignKey("final_render_assets.id", ondelete="CASCADE"), index=True
+    )
+    reviewer: Mapped[str] = mapped_column(String(200))
+    decision: Mapped[str] = mapped_column(String(20))
+    visual_relevance: Mapped[int]
+    pacing: Mapped[int]
+    crop_quality: Mapped[int]
+    narration_quality: Mapped[int]
+    caption_readability: Mapped[int]
+    hook_strength: Mapped[int]
+    audio_sync: Mapped[int]
+    overall_readiness: Mapped[int]
+    checklist: Mapped[dict[str, bool]] = mapped_column(JSON)
+    rejection_categories: Mapped[list[QualityRejectionCategory]] = mapped_column(JSON)
+    recommended_revision_stage: Mapped[RevisionStage | None] = mapped_column(
+        enum_column(RevisionStage, "quality_revision_stage"), nullable=True
+    )
+    notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

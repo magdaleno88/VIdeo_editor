@@ -11,6 +11,7 @@ from app.core.errors import NotFoundError
 from app.models import (
     CaptionPlan,
     FinalRenderAsset,
+    FinalRenderQualityReview,
     NarrationAsset,
     RenderAsset,
     ResearchClaim,
@@ -396,7 +397,10 @@ class DashboardService:
         render = self.session.scalar(
             select(FinalRenderAsset)
             .where(FinalRenderAsset.id == render_id)
-            .options(selectinload(FinalRenderAsset.reviews))
+            .options(
+                selectinload(FinalRenderAsset.reviews),
+                selectinload(FinalRenderAsset.quality_reviews),
+            )
         )
         if render is None:
             raise NotFoundError(f"Final render {render_id} was not found")
@@ -428,6 +432,15 @@ class DashboardService:
         versions = []
         for asset, style in version_rows:
             asset.dashboard_style = style
+            asset.dashboard_quality_review = self.session.scalar(
+                select(FinalRenderQualityReview)
+                .where(FinalRenderQualityReview.final_render_id == asset.id)
+                .order_by(
+                    FinalRenderQualityReview.created_at.desc(),
+                    FinalRenderQualityReview.id.desc(),
+                )
+                .limit(1)
+            )
             versions.append(asset)
         return {
             "render": render,
@@ -438,6 +451,9 @@ class DashboardService:
             "narration": narration,
             "versions": versions,
             "playable_versions": [item for item in versions if item.output_path],
+            "quality_reviews": sorted(
+                render.quality_reviews, key=lambda item: item.id, reverse=True
+            ),
         }
 
     def failures(self, limit: int = 50) -> list[dict[str, Any]]:

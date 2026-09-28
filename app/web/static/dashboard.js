@@ -11,5 +11,13 @@ document.addEventListener("click", (event) => {
 
 document.addEventListener("submit", (event) => {
   const message = event.target.dataset.confirm;
-  if (message && !window.confirm(message)) event.preventDefault();
+  if (message && !window.confirm(message)) {
+    event.preventDefault();
+    return;
+  }
+  const button = event.target.querySelector("button[type='submit']");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Processing…";
+  }
 });

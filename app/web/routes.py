@@ -31,15 +31,20 @@ from app.repositories.cache import SearchCacheRepository
 from app.repositories.candidates import CandidateRepository
 from app.repositories.captions import CaptionRepository
 from app.repositories.narrations import NarrationRepository
+from app.repositories.pilots import PilotRepository
 from app.repositories.renders import RenderRepository
 from app.repositories.research import ResearchRepository
 from app.repositories.scripts import ScriptRepository
 from app.schemas.domain import (
     CaptionPlanRequest,
     DiscoveryRequest,
+    FinalRenderQualityReviewRequest,
     FinalRenderReviewRequest,
     NarrationRequest,
     NarrationReviewRequest,
+    PilotBatchCreate,
+    QualityChecklist,
+    QualityRejectionCategory,
     RenderPlanRequest,
     RenderReviewRequest,
     ResearchReview,
@@ -54,6 +59,7 @@ from app.services.captions.service import FinalRenderReviewService
 from app.services.discovery.queries import TemplateQueryGenerator
 from app.services.discovery.service import DiscoveryService
 from app.services.narration.service import NarrationReviewService
+from app.services.pilots import PilotService, QualityReviewService
 from app.services.rendering.runtime import edit_plan_service
 from app.services.rendering.service import RenderReviewService
 from app.services.research.service import ResearchReviewService
@@ -91,6 +97,80 @@ def home(request: Request, session: SessionDep):
         request=request,
         name="home.html",
         context=_context(request, **DashboardService(session).home()),
+    )
+
+
+@router.get("/dashboard/pilots", response_class=HTMLResponse, name="dashboard_pilots")
+def pilots(
+    request: Request,
+    session: SessionDep,
+    page: Annotated[int, Query(ge=1)] = 1,
+):
+    return templates.TemplateResponse(
+        request=request,
+        name="pilots.html",
+        context=_context(request, result=PilotService(session).list_batches(page, 20)),
+    )
+
+
+@router.post("/dashboard/pilots", name="dashboard_create_pilot")
+async def create_pilot(request: Request, session: SessionDep):
+    values = await form_data(request)
+    verify_csrf(request, values)
+    try:
+        candidate_ids = [
+            int(value.strip())
+            for value in values.get("candidate_ids", "").split(",")
+            if value.strip()
+        ]
+        batch = PilotService(session).create_batch(
+            PilotBatchCreate(
+                name=values.get("name", ""),
+                slug=values.get("slug", ""),
+                description=values.get("description", ""),
+                candidate_ids=candidate_ids,
+            )
+        )
+    except (ApplicationError, ValueError) as exc:
+        return _redirect("/dashboard/pilots", error=str(exc))
+    return _redirect(f"/dashboard/pilots/{batch.id}", notice="Pilot batch created")
+
+
+@router.get(
+    "/dashboard/pilots/{batch_id}",
+    response_class=HTMLResponse,
+    name="dashboard_pilot_batch",
+)
+def pilot_batch(request: Request, batch_id: int, session: SessionDep):
+    return templates.TemplateResponse(
+        request=request,
+        name="pilot_batch.html",
+        context=_context(request, **PilotService(session).batch_summary(batch_id)),
+    )
+
+
+@router.post("/dashboard/pilots/{batch_id}/candidates", name="dashboard_add_pilot_candidate")
+async def add_pilot_candidate(request: Request, batch_id: int, session: SessionDep):
+    values = await form_data(request)
+    verify_csrf(request, values)
+    try:
+        PilotService(session).add_candidate(batch_id, int(values.get("candidate_id", "")))
+    except (ApplicationError, ValueError) as exc:
+        return _redirect(f"/dashboard/pilots/{batch_id}", error=str(exc))
+    return _redirect(f"/dashboard/pilots/{batch_id}", notice="Candidate added")
+
+
+@router.get(
+    "/dashboard/pilots/{batch_id}/candidates/{candidate_id}",
+    response_class=HTMLResponse,
+    name="dashboard_pilot_detail",
+)
+def pilot_detail(request: Request, batch_id: int, candidate_id: int, session: SessionDep):
+    progress = PilotService(session).progress(batch_id, candidate_id)
+    return templates.TemplateResponse(
+        request=request,
+        name="pilot_detail.html",
+        context=_context(request, progress=progress),
     )
 
 
@@ -236,6 +316,72 @@ def media_preview(asset_id: int, session: SessionDep, request: Request):
     )
     media_type = "image/jpeg" if path.suffix.lower() in (".jpg", ".jpeg") else "image/png"
     return FileResponse(path, media_type=media_type)
+
+
+@router.get("/downloads/final-render/{asset_id}.mp4", name="download_final_render")
+def download_final_render(asset_id: int, session: SessionDep, request: Request):
+    asset = session.get(FinalRenderAsset, asset_id)
+    if asset is None:
+        raise NotFoundError(f"Final render {asset_id} was not found")
+    path = resolve_persisted_file(request.app.state.settings.render_storage_root, asset.output_path)
+    return FileResponse(path, media_type="video/mp4", filename=f"final-render-{asset.id}.mp4")
+
+
+@router.get("/downloads/final-render/{asset_id}.srt", name="download_final_srt")
+def download_final_srt(asset_id: int, session: SessionDep, request: Request):
+    asset = session.get(FinalRenderAsset, asset_id)
+    if asset is None:
+        raise NotFoundError(f"Final render {asset_id} was not found")
+    path = resolve_persisted_file(request.app.state.settings.caption_storage_root, asset.srt_path)
+    return FileResponse(
+        path,
+        media_type="application/x-subrip",
+        filename=f"final-render-{asset.id}.srt",
+    )
+
+
+@router.post(
+    "/dashboard/final-renders/{render_id}/quality-review",
+    name="dashboard_quality_review",
+)
+async def submit_quality_review(request: Request, render_id: int, session: SessionDep):
+    values = await form_data(request)
+    verify_csrf(request, values)
+    target = safe_redirect(values.get("return_to"), f"/dashboard/final-renders/{render_id}")
+    try:
+        checklist = QualityChecklist(
+            **{field: values.get(field) == "true" for field in QualityChecklist.model_fields}
+        )
+        categories = [
+            category
+            for category in QualityRejectionCategory
+            if values.get(f"category_{category.value}") == "true"
+        ]
+        payload = FinalRenderQualityReviewRequest(
+            reviewer=values.get("reviewer", "").strip()
+            or request.app.state.settings.dashboard_default_reviewer,
+            decision=values.get("decision", ""),
+            visual_relevance=int(values.get("visual_relevance", "")),
+            pacing=int(values.get("pacing", "")),
+            crop_quality=int(values.get("crop_quality", "")),
+            narration_quality=int(values.get("narration_quality", "")),
+            caption_readability=int(values.get("caption_readability", "")),
+            hook_strength=int(values.get("hook_strength", "")),
+            audio_sync=int(values.get("audio_sync", "")),
+            overall_readiness=int(values.get("overall_readiness", "")),
+            checklist=checklist,
+            rejection_categories=categories,
+            notes=values.get("notes", "").strip(),
+        )
+        QualityReviewService(
+            CandidateRepository(session),
+            RenderRepository(session),
+            CaptionRepository(session),
+            PilotRepository(session),
+        ).submit(render_id, payload)
+    except (ApplicationError, ValueError) as exc:
+        return _redirect(target, error=str(exc))
+    return _redirect(target, notice="Structured quality review recorded")
 
 
 @router.post("/dashboard/review/{kind}/{resource_id}/{decision}", name="dashboard_review")

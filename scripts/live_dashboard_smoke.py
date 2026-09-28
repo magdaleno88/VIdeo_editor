@@ -15,9 +15,11 @@ from app.core.config import Settings
 from app.core.database import build_engine, session_factory, session_scope
 from app.main import create_app
 from app.providers.pexels import PexelsProvider
+from app.repositories.candidates import CandidateRepository
 from app.repositories.captions import CaptionRepository
 from app.repositories.renders import RenderRepository
-from app.schemas.domain import CaptionPlanRequest
+from app.schemas.domain import CaptionPlanRequest, Idea, PilotBatchCreate
+from app.services.pilots import PilotService
 from tests.conftest import ROOT
 from tests.test_captions import approved_raw, caption_service, final_service
 
@@ -51,11 +53,29 @@ def main() -> int:
         raw_model.output_path = "smoke/caption_smoke.mp4"
         final_model.output_path = "smoke/caption_smoke.mp4"
         final_model.preview_path = "smoke/caption_smoke_preview.png"
+        candidate_ids = [candidate.id]
+        candidates = CandidateRepository(session)
+        for index in range(4):
+            extra, _ = candidates.add_if_new(
+                video.model_copy(update={"provider_video_id": f"dashboard-smoke-{index}"}),
+                "local synthetic pilot",
+                Idea(object_name="industrial pilot"),
+            )
+            candidate_ids.append(extra.id)
+        batch = PilotService(session).create_batch(
+            PilotBatchCreate(
+                name="Local five-video pilot",
+                slug="local-five-video-pilot",
+                description="Synthetic candidates; no claim of real-source review.",
+                candidate_ids=candidate_ids,
+            )
+        )
         ids = {
             "candidate": candidate.id,
             "narration": narration.id,
             "raw": raw.id,
             "final": final.id,
+            "batch": batch.id,
         }
 
     settings = Settings(
@@ -85,10 +105,14 @@ def main() -> int:
                 client.get(f"/dashboard/candidates/{ids['candidate']}"),
                 client.get("/dashboard/review-queue"),
                 client.get(f"/dashboard/final-renders/{ids['final']}"),
+                client.get(f"/dashboard/pilots/{ids['batch']}"),
+                client.get(f"/dashboard/pilots/{ids['batch']}/candidates/{ids['candidate']}"),
                 client.get(f"/media/audio/{ids['narration']}"),
                 client.get(f"/media/render/{ids['raw']}", headers={"Range": "bytes=0-99"}),
                 client.get(f"/media/final-render/{ids['final']}", headers={"Range": "bytes=0-99"}),
                 client.get(f"/media/preview/{ids['final']}"),
+                client.get(f"/downloads/final-render/{ids['final']}.mp4"),
+                client.get(f"/downloads/final-render/{ids['final']}.srt"),
             ]
             if any(response.status_code not in (200, 206) for response in checks):
                 raise RuntimeError(
@@ -96,17 +120,50 @@ def main() -> int:
                     + ", ".join(str(response.status_code) for response in checks)
                 )
             response = client.post(
-                f"/dashboard/review/final-render/{ids['final']}/approve",
+                f"/dashboard/final-renders/{ids['final']}/quality-review",
                 data={
                     "csrf_token": application.state.dashboard_csrf_token,
                     "return_to": f"/dashboard/final-renders/{ids['final']}",
                     "reviewer": "Dashboard smoke",
-                    "notes": "HTTP form verified",
+                    "decision": "APPROVED",
+                    "notes": "Synthetic HTTP quality workflow verified",
+                    **{
+                        key: "5"
+                        for key in (
+                            "visual_relevance",
+                            "pacing",
+                            "crop_quality",
+                            "narration_quality",
+                            "caption_readability",
+                            "hook_strength",
+                            "audio_sync",
+                            "overall_readiness",
+                        )
+                    },
+                    **{
+                        key: "true"
+                        for key in (
+                            "first_two_seconds_interesting",
+                            "visuals_match_narration",
+                            "important_parts_visible",
+                            "narration_pacing_natural",
+                            "captions_readable",
+                            "captions_preserve_visuals",
+                            "hook_makes_sense",
+                            "facts_consistent",
+                            "cuts_and_loops_natural",
+                            "audio_synchronized",
+                            "ready_to_publish",
+                        )
+                    },
                 },
                 follow_redirects=False,
             )
             if response.status_code != 303:
-                raise RuntimeError(f"Dashboard review form returned {response.status_code}")
+                raise RuntimeError(f"Dashboard quality form returned {response.status_code}")
+            progress = client.get(f"/pilot-batches/{ids['batch']}/candidates/{ids['candidate']}")
+            if progress.status_code != 200 or progress.json()["state"] != "READY":
+                raise RuntimeError("Pilot did not reach READY after quality approval")
     finally:
         server.should_exit = True
         thread.join(timeout=10)
@@ -114,6 +171,10 @@ def main() -> int:
     print(
         "LOCAL DASHBOARD VERIFIED: home, candidate, queue, final review, audio, raw MP4, "
         "decorated MP4, preview and CSRF-protected approval exercised over HTTP"
+    )
+    print(
+        "LOCAL PILOT WORKFLOW VERIFIED: five-candidate synthetic batch, full progress, "
+        "structured quality approval and known-ID MP4/SRT downloads exercised over HTTP"
     )
     return 0
 

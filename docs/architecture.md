@@ -14,6 +14,8 @@ Verified scripting is synchronous and explicit. `ScriptGenerationService` requir
 
 Caption planning is deterministic and consumes the approved Phase 6 output, approved script sentences and persisted narration alignment. `CaptionPlanService` creates a final-output timeline with style and safe-area snapshots, while `ASSSubtitleRenderer` and `SRTSubtitleRenderer` serialize the plan without accepting arbitrary filter syntax. `FinalRenderService` reuses the existing FFmpeg process/probe boundary, stores a separate decorated MP4 and preview, and preserves the raw render unchanged. Only verified research claims may become factual overlays.
 
+`PilotService` reads those same artifacts to resolve the complete local workflow, next action, blockers, version counts, call counts and risk flags. Pilot batches add membership only. `QualityReviewService` stores the final human scorecard and routes rejections to an existing upstream stage; it also delegates the final-render state transition to the established review service.
+
 Only implemented modules have code directories. Future modules described below will be added when their contracts can be verified. There are no placeholder production workers or fake AI implementations.
 
 ## Data model
@@ -30,6 +32,9 @@ erDiagram
     RESEARCH_CLAIMS ||--o{ RESEARCH_CLAIM_EVIDENCE : cites
     RESEARCH_SOURCES ||--o{ RESEARCH_CLAIM_EVIDENCE : supports
     VIDEO_CANDIDATES ||--o{ SCRIPT_DRAFTS : has
+    PILOT_BATCHES ||--o{ PILOT_RUNS : contains
+    VIDEO_CANDIDATES ||--o{ PILOT_RUNS : participates
+    FINAL_RENDER_ASSETS ||--o{ FINAL_RENDER_QUALITY_REVIEWS : scores
     RESEARCH_DOSSIERS ||--o{ SCRIPT_DRAFTS : authorizes
     SCORE_EVALUATIONS ||--o{ SCRIPT_DRAFTS : aligns
     SCRIPT_DRAFTS ||--o{ SCRIPT_BEATS : contains

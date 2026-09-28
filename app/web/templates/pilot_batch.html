@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "partials/status.html" import badge %}
+{% block title %}{{ batch.name }} · Industrial Content Factory{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">Pilot batch #{{ batch.id }}</p><h1>{{ batch.name }}</h1><p>{{ batch.description or 'No description.' }}</p></div><a class="button" href="/dashboard/pilots">All batches</a></section>
+<section class="metric-grid">
+  <article><strong>{{ progresses|length }}</strong><span>Candidates</span></article>
+  <article><strong>{{ states.get('READY', 0) }}</strong><span>Ready</span></article>
+  <article><strong>{{ states.get('IN_REVIEW', 0) }}</strong><span>In review</span></article>
+  <article><strong>{{ states.get('BLOCKED', 0) + states.get('REJECTED', 0) }}</strong><span>Blocked / rejected</span></article>
+</section>
+<div class="two-column">
+<section class="panel"><h2>Add candidate</h2><form method="post" action="/dashboard/pilots/{{ batch.id }}/candidates"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Existing candidate ID<input name="candidate_id" type="number" min="1" required></label><button class="button primary">Add</button></form></section>
+<section class="panel"><h2>Quality summary</h2>{% if average_scores %}<dl class="facts">{% for key, value in average_scores.items() %}<div><dt>{{ key|replace('_',' ')|title }}</dt><dd>{{ value }} / 5</dd></div>{% endfor %}</dl>{% else %}<p class="empty">No structured quality reviews yet.</p>{% endif %}{% if common_rejection_reasons %}<h3>Common rejection reasons</h3><ul>{% for reason, count in common_rejection_reasons %}<li>{{ reason|replace('_',' ')|title }} · {{ count }}</li>{% endfor %}</ul>{% endif %}</section>
+</div>
+<section class="panel"><div class="section-heading"><h2>Candidate progress</h2><span>{{ progresses|length }} runs</span></div>
+<div class="card-grid">{% for item in progresses %}<a class="candidate-card" href="/dashboard/pilots/{{ batch.id }}/candidates/{{ item.candidate.id }}"><strong>#{{ item.candidate.id }} · {{ item.candidate.title }}</strong>{{ badge(item.state) }}<span>Next: {{ item.next_action }}</span>{% if item.blocked_reason %}<small>{{ item.blocked_reason }}</small>{% endif %}<small>{{ item.external_calls.values()|sum }} external calls · {{ item.version_counts.values()|sum }} versions</small></a>{% else %}<p class="empty">Add candidates to start the pilot.</p>{% endfor %}</div>
+</section>
+{% endblock %}

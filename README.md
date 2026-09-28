@@ -1,6 +1,6 @@
 # Industrial Content Factory
 
-A local, semi-automated system for discovering industrial-process videos and building human-reviewed educational short-form content. Phases 1–8A implement **discovery, rights review, scoring, AI visual analysis, claim-centric research, traceable scripts, approved narration, deterministic vertical-video assembly, captions, graphics and a local operational dashboard**. It does not publish or remove watermarks from videos.
+A local, semi-automated system for discovering industrial-process videos and building human-reviewed educational short-form content. Phases 1–8B implement **discovery, rights review, scoring, AI visual analysis, claim-centric research, traceable scripts, approved narration, deterministic vertical-video assembly, captions, graphics, a local operational dashboard and controlled pilot-batch validation**. It does not publish or remove watermarks from videos.
 
 ## Features
 
@@ -19,6 +19,7 @@ A local, semi-automated system for discovering industrial-process videos and bui
 - Build an inspectable edit plan from approved visual references and narration timing, then render and validate a versioned vertical H.264/AAC MP4 with FFmpeg.
 - Build captions from approved script sentences and narration alignment, generate UTF-8 ASS/SRT, add safe-area hook/verified-fact graphics, render a separate decorated MP4 and review it independently.
 - Operate the complete pipeline from a local server-rendered dashboard with review queues, safe audio/video playback, timestamp seeking, explicit cost-bearing actions and CSRF-protected decisions.
+- Track batches of five or more pilot candidates, see the exact blocker and next action, compare versions, record an eight-dimension final quality review and download known final MP4/SRT assets.
 - Review rights with evidence, approve/reject candidates, and keep an audit history. Unverified rights block approval.
 - Use the same services through FastAPI, interactive OpenAPI docs and a JSON-output CLI.
 
@@ -62,7 +63,7 @@ flowchart LR
     Repository --> DB[(SQLite / PostgreSQL-ready schema)]
 ```
 
-See [full pipeline architecture](docs/architecture.md), [provider integration notes](docs/providers.md), [scoring semantics](docs/scoring.md), [technical research](docs/research.md), [verified scripting](docs/scripting.md), [narration](docs/tts.md), [rendering](docs/rendering.md), [captions and graphics](docs/captions.md), [dashboard operation](docs/dashboard.md), and [the ten-phase roadmap](docs/roadmap.md).
+See [full pipeline architecture](docs/architecture.md), [provider integration notes](docs/providers.md), [scoring semantics](docs/scoring.md), [technical research](docs/research.md), [verified scripting](docs/scripting.md), [narration](docs/tts.md), [rendering](docs/rendering.md), [captions and graphics](docs/captions.md), [dashboard operation](docs/dashboard.md), [pilot workflow](docs/pilot-workflow.md), and [the ten-phase roadmap](docs/roadmap.md).
 
 ## Installation
 

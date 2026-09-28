@@ -1133,6 +1133,36 @@ class FinalRenderStatus(StrEnum):
     FAILED = "FAILED"
 
 
+class PilotRunState(StrEnum):
+    READY = "READY"
+    IN_REVIEW = "IN_REVIEW"
+    BLOCKED = "BLOCKED"
+    REJECTED = "REJECTED"
+
+
+class QualityRejectionCategory(StrEnum):
+    BAD_CROP = "BAD_CROP"
+    BAD_CLIP_SELECTION = "BAD_CLIP_SELECTION"
+    WEAK_HOOK = "WEAK_HOOK"
+    PACING_TOO_SLOW = "PACING_TOO_SLOW"
+    PACING_TOO_FAST = "PACING_TOO_FAST"
+    CAPTION_PROBLEM = "CAPTION_PROBLEM"
+    TTS_PROBLEM = "TTS_PROBLEM"
+    VISUAL_NARRATION_MISMATCH = "VISUAL_NARRATION_MISMATCH"
+    FACTUAL_PROBLEM = "FACTUAL_PROBLEM"
+    AUDIO_SYNC = "AUDIO_SYNC"
+    OTHER = "OTHER"
+
+
+class RevisionStage(StrEnum):
+    RESEARCH = "RESEARCH"
+    SCRIPT = "SCRIPT"
+    NARRATION = "NARRATION"
+    RENDER_PLAN = "RENDER_PLAN"
+    CAPTION_PLAN = "CAPTION_PLAN"
+    FINAL_REVIEW = "FINAL_REVIEW"
+
+
 class CaptionPlanRequest(Contract):
     style_profile: CaptionStyleProfile | None = None
     position: CaptionPosition = CaptionPosition.LOWER
@@ -1152,6 +1182,104 @@ class PreviewRequest(Contract):
 
 class FinalRenderReviewRequest(ReviewAction):
     decision: Literal["APPROVED", "REJECTED"]
+
+
+class QualityChecklist(Contract):
+    first_two_seconds_interesting: bool = False
+    visuals_match_narration: bool = False
+    important_parts_visible: bool = False
+    narration_pacing_natural: bool = False
+    captions_readable: bool = False
+    captions_preserve_visuals: bool = False
+    hook_makes_sense: bool = False
+    facts_consistent: bool = False
+    cuts_and_loops_natural: bool = False
+    audio_synchronized: bool = False
+    ready_to_publish: bool = False
+
+
+class FinalRenderQualityReviewRequest(Contract):
+    reviewer: NonEmpty
+    decision: Literal["APPROVED", "REJECTED"]
+    visual_relevance: int = Field(ge=1, le=5)
+    pacing: int = Field(ge=1, le=5)
+    crop_quality: int = Field(ge=1, le=5)
+    narration_quality: int = Field(ge=1, le=5)
+    caption_readability: int = Field(ge=1, le=5)
+    hook_strength: int = Field(ge=1, le=5)
+    audio_sync: int = Field(ge=1, le=5)
+    overall_readiness: int = Field(ge=1, le=5)
+    checklist: QualityChecklist
+    rejection_categories: list[QualityRejectionCategory] = Field(
+        default_factory=list, max_length=10
+    )
+    notes: Annotated[str, Field(max_length=4000)] = ""
+
+    @model_validator(mode="after")
+    def validate_decision_details(self) -> "FinalRenderQualityReviewRequest":
+        if self.decision == "REJECTED" and not self.rejection_categories:
+            raise ValueError("Rejected quality reviews require at least one category")
+        if self.decision == "APPROVED" and not self.checklist.ready_to_publish:
+            raise ValueError("Approved quality reviews must mark the video ready to publish")
+        return self
+
+
+class FinalRenderQualityReviewRead(Contract):
+    id: int
+    final_render_id: int
+    reviewer: str
+    decision: Literal["APPROVED", "REJECTED"]
+    visual_relevance: int
+    pacing: int
+    crop_quality: int
+    narration_quality: int
+    caption_readability: int
+    hook_strength: int
+    audio_sync: int
+    overall_readiness: int
+    checklist: QualityChecklist
+    rejection_categories: list[QualityRejectionCategory]
+    recommended_revision_stage: RevisionStage | None
+    notes: str
+    created_at: datetime
+
+
+class PilotBatchCreate(Contract):
+    name: Annotated[str, Field(min_length=1, max_length=200)]
+    slug: Annotated[str, Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=80)]
+    description: Annotated[str, Field(max_length=2000)] = ""
+    candidate_ids: list[int] = Field(default_factory=list, max_length=20)
+
+
+class PilotBatchRead(Contract):
+    id: int
+    name: str
+    slug: str
+    description: str
+    created_at: datetime
+    candidate_ids: list[int]
+
+
+class PilotStageRead(Contract):
+    key: str
+    label: str
+    status: str
+    blocked_reason: str | None = None
+
+
+class PilotProgressRead(Contract):
+    batch_id: int
+    candidate_id: int
+    state: PilotRunState
+    next_action: str
+    next_action_key: str | None
+    blocked_reason: str | None
+    stages: list[PilotStageRead]
+    external_calls: dict[str, int]
+    version_counts: dict[str, int]
+    elapsed_seconds: float | None
+    technical_warnings: list[str]
+    high_risk_flags: list[str]
 
 
 class CaptionItemRead(Contract):

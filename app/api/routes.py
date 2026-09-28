@@ -15,6 +15,8 @@ from app.api.dependencies import (
     get_final_render_service,
     get_narration_review,
     get_narration_service,
+    get_pilot_service,
+    get_quality_review,
     get_render_review,
     get_render_service,
     get_research_review,
@@ -39,6 +41,8 @@ from app.schemas.domain import (
     EvaluationRead,
     EventRead,
     FinalRenderAssetRead,
+    FinalRenderQualityReviewRead,
+    FinalRenderQualityReviewRequest,
     FinalRenderRequest,
     FinalRenderResponse,
     FinalRenderReviewRequest,
@@ -48,6 +52,9 @@ from app.schemas.domain import (
     NarrationRequest,
     NarrationResponse,
     NarrationReviewRequest,
+    PilotBatchCreate,
+    PilotBatchRead,
+    PilotProgressRead,
     PreviewRequest,
     RenderAssetRead,
     RenderPlanRequest,
@@ -77,6 +84,7 @@ from app.services.captions.service import (
 from app.services.discovery.queries import TemplateQueryGenerator
 from app.services.discovery.service import DiscoveryService
 from app.services.narration.service import NarrationReviewService, NarrationService
+from app.services.pilots import PilotService, QualityReviewService
 from app.services.rendering.service import EditPlanService, RenderReviewService, RenderService
 from app.services.research.service import ResearchReviewService, TechnicalResearchService
 from app.services.review import ReviewService
@@ -98,6 +106,8 @@ RenderReviewDep = Annotated[RenderReviewService, Depends(get_render_review)]
 CaptionPlanDep = Annotated[CaptionPlanService, Depends(get_caption_plan)]
 FinalRenderDep = Annotated[FinalRenderService, Depends(get_final_render_service, scope="function")]
 FinalRenderReviewDep = Annotated[FinalRenderReviewService, Depends(get_final_render_review)]
+PilotDep = Annotated[PilotService, Depends(get_pilot_service)]
+QualityReviewDep = Annotated[QualityReviewService, Depends(get_quality_review)]
 
 
 @router.get("/health", tags=["operations"])
@@ -476,3 +486,57 @@ def reject_final_render(
         render_id,
         FinalRenderReviewRequest(decision="REJECTED", reviewer=body.reviewer, notes=body.notes),
     )
+
+
+@router.post("/pilot-batches", response_model=PilotBatchRead, tags=["pilots"])
+def create_pilot_batch(body: PilotBatchCreate, service: PilotDep) -> PilotBatchRead:
+    return service.create_batch(body)
+
+
+@router.get("/pilot-batches", tags=["pilots"])
+def pilot_batches(
+    service: PilotDep,
+    page: Annotated[int, Query(ge=1)] = 1,
+    per_page: Annotated[int, Query(ge=1, le=100)] = 20,
+):
+    return service.list_batches(page, per_page)
+
+
+@router.post(
+    "/pilot-batches/{batch_id}/candidates/{candidate_id}",
+    response_model=PilotProgressRead,
+    tags=["pilots"],
+)
+def add_pilot_candidate(batch_id: int, candidate_id: int, service: PilotDep) -> PilotProgressRead:
+    return service.as_read(service.add_candidate(batch_id, candidate_id))
+
+
+@router.get(
+    "/pilot-batches/{batch_id}/candidates/{candidate_id}",
+    response_model=PilotProgressRead,
+    tags=["pilots"],
+)
+def pilot_progress(batch_id: int, candidate_id: int, service: PilotDep) -> PilotProgressRead:
+    return service.as_read(service.progress(batch_id, candidate_id))
+
+
+@router.get(
+    "/final-renders/{render_id}/quality-reviews",
+    response_model=list[FinalRenderQualityReviewRead],
+    tags=["pilots"],
+)
+def quality_reviews(render_id: int, service: QualityReviewDep):
+    return service.list(render_id)
+
+
+@router.post(
+    "/final-renders/{render_id}/quality-reviews",
+    response_model=FinalRenderQualityReviewRead,
+    tags=["pilots"],
+)
+def submit_quality_review(
+    render_id: int,
+    body: FinalRenderQualityReviewRequest,
+    service: QualityReviewDep,
+):
+    return service.submit(render_id, body)

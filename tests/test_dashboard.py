@@ -223,3 +223,124 @@ def test_preview_is_not_generated_on_page_load(dashboard_data):
     assert "Generate at 1.5 s" in response.text
     with app.state.session_factory() as session:
         assert CaptionRepository(session).get_render(ids["final"]).preview_path is None
+
+
+def test_pilot_batch_quality_review_and_safe_downloads(dashboard_data, video):
+    client, ids, app = dashboard_data
+    candidate_ids = [ids["candidate"]]
+    with app.state.session_factory.begin() as session:
+        repository = CandidateRepository(session)
+        for index in range(4):
+            candidate, _ = repository.add_if_new(
+                video.model_copy(update={"provider_video_id": f"pilot-{index}"}),
+                "pilot fixture",
+                Idea(object_name="industrial pilot"),
+            )
+            candidate_ids.append(candidate.id)
+
+    created = client.post(
+        "/pilot-batches",
+        json={
+            "name": "Five video pilot",
+            "slug": "five-video-pilot",
+            "description": "Synthetic local validation",
+            "candidate_ids": candidate_ids,
+        },
+    )
+    assert created.status_code == 200
+    batch_id = created.json()["id"]
+    assert len(created.json()["candidate_ids"]) == 5
+
+    pilot_list = client.get("/dashboard/pilots")
+    assert pilot_list.status_code == 200
+    assert "Five video pilot" in pilot_list.text
+
+    batch_page = client.get(f"/dashboard/pilots/{batch_id}")
+    assert batch_page.status_code == 200
+    assert "Five video pilot" in batch_page.text
+    assert "Candidate progress" in batch_page.text
+
+    detail = client.get(f"/dashboard/pilots/{batch_id}/candidates/{ids['candidate']}")
+    assert detail.status_code == 200
+    assert "Full workflow checklist" in detail.text
+    assert (
+        "Structured final quality review"
+        in client.get(f"/dashboard/final-renders/{ids['final']}").text
+    )
+
+    quality_data = {
+        "csrf_token": ids["csrf"],
+        "return_to": f"/dashboard/final-renders/{ids['final']}",
+        "reviewer": "Pilot editor",
+        "decision": "APPROVED",
+        "notes": "All checks passed",
+        **{
+            key: "5"
+            for key in (
+                "visual_relevance",
+                "pacing",
+                "crop_quality",
+                "narration_quality",
+                "caption_readability",
+                "hook_strength",
+                "audio_sync",
+                "overall_readiness",
+            )
+        },
+        **{
+            key: "true"
+            for key in (
+                "first_two_seconds_interesting",
+                "visuals_match_narration",
+                "important_parts_visible",
+                "narration_pacing_natural",
+                "captions_readable",
+                "captions_preserve_visuals",
+                "hook_makes_sense",
+                "facts_consistent",
+                "cuts_and_loops_natural",
+                "audio_synchronized",
+                "ready_to_publish",
+            )
+        },
+    }
+    reviewed = client.post(
+        f"/dashboard/final-renders/{ids['final']}/quality-review",
+        data=quality_data,
+        follow_redirects=False,
+    )
+    assert reviewed.status_code == 303
+    progress = client.get(f"/pilot-batches/{batch_id}/candidates/{ids['candidate']}").json()
+    assert progress["state"] == "READY"
+    assert progress["next_action"] == "Pilot complete"
+    assert len(progress["stages"]) == 11
+    assert client.get(f"/downloads/final-render/{ids['final']}.mp4").status_code == 200
+    assert client.get(f"/downloads/final-render/{ids['final']}.srt").status_code == 200
+    assert client.get("/downloads/final-render/999999.mp4").status_code == 404
+
+
+def test_quality_rejection_requires_category_and_routes_revision(dashboard_data):
+    client, ids, _ = dashboard_data
+    payload = {
+        "reviewer": "Pilot editor",
+        "decision": "REJECTED",
+        "visual_relevance": 3,
+        "pacing": 4,
+        "crop_quality": 1,
+        "narration_quality": 4,
+        "caption_readability": 3,
+        "hook_strength": 4,
+        "audio_sync": 5,
+        "overall_readiness": 2,
+        "checklist": {},
+        "rejection_categories": ["BAD_CROP", "CAPTION_PROBLEM"],
+        "notes": "Crop hides the key machinery",
+    }
+    response = client.post(f"/final-renders/{ids['final']}/quality-reviews", json=payload)
+    assert response.status_code == 200
+    assert response.json()["recommended_revision_stage"] == "RENDER_PLAN"
+    invalid = payload | {"rejection_categories": []}
+    assert (
+        client.post(f"/final-renders/{ids['final']}/quality-reviews", json=invalid).status_code
+        == 422
+    )

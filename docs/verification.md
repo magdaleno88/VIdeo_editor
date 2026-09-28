@@ -8,19 +8,19 @@ Verified on 2026-09-28 in Windows PowerShell, from the project root.
 - Windows 10 Pro, version 25H2 (build 26200.9445), running PowerShell 7.6.5.
 - The system Python launcher reported no registered Python installations. The available Codex runtime at `C:/Users/USER/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe` was used only to create the virtual environment.
 - Runtime/development dependencies were installed into that virtual environment. Exact installed package versions are recorded in `requirements.lock`; project constraints are in `pyproject.toml`.
-- SQLite development database migrated to revision `0007` at `data/industrial_content_factory.db`.
+- SQLite development database migrated to revision `0008` at `data/industrial_content_factory.db`.
 
 ## Results
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Offline unit/integration suite | `.\.venv\Scripts\python.exe -m pytest -q --cov=app --cov-report=term-missing` | **193 passed**, 1 upstream deprecation warning; **91% statement coverage** for `app` (5,737 statements, 502 not covered) |
+| Offline unit/integration suite | `.\.venv\Scripts\python.exe -m pytest -q --cov=app --cov-report=term-missing` | **195 passed**, 1 upstream deprecation warning; **90% statement coverage** for `app` (6,285 statements, 598 not covered) |
 | Phase 3 focused suite | `.\.venv\Scripts\python.exe -m pytest -q tests/test_research.py tests/test_research_providers.py tests/test_research_api_cli.py` | **21 passed**, 1 upstream deprecation warning |
 | Phase 4 focused suite | `.\.venv\Scripts\python.exe -m pytest -q tests/test_scripting.py tests/test_scripting_provider.py tests/test_scripting_api_cli.py` | **9 passed**, 1 upstream deprecation warning |
 | Phase 5 focused suite | `.\.venv\Scripts\python.exe -m pytest -q tests/test_narration.py tests/test_elevenlabs_tts.py` | **7 passed**, 1 upstream deprecation warning |
 | Phase 6 focused suite | `.\.venv\Scripts\python.exe -m pytest -q tests/test_rendering.py tests/test_rendering_live.py` | **8 passed**; mocked pipeline and actual local binary smoke passed |
 | Phase 7 focused suite | `.\.venv\Scripts\python.exe -m pytest -q tests/test_captions.py tests/test_captions_live.py` | **12 passed**; offline caption/graphics pipeline and actual local ASS render passed |
-| Phase 8A focused suite | `.\.venv\Scripts\python.exe -m pytest -q tests/test_dashboard.py` | **12 passed**; HTML views, gating, reviews, media security, CSRF and escaping passed |
+| Phases 8A–8B focused suite | `.\.venv\Scripts\python.exe -m pytest -q tests/test_dashboard.py` | **14 passed**; HTML views, pilot batches, gating, quality review, downloads, media security, CSRF and escaping passed |
 | Lint | `.\.venv\Scripts\python.exe -m ruff check .` | Passed |
 | Formatting | `.\.venv\Scripts\python.exe -m ruff format --check .` | Passed, 140 Python files |
 | Migration/model consistency | `.\.venv\Scripts\python.exe -m alembic check` | No new upgrade operations detected |
@@ -28,7 +28,7 @@ Verified on 2026-09-28 in Windows PowerShell, from the project root.
 | Real HTTP startup/shutdown | `.\.venv\Scripts\python.exe scripts/smoke.py` | Passed; temporary database and local server cleaned up |
 | Local FFmpeg synthetic render | `.\.venv\Scripts\python.exe scripts/live_render_smoke.py` | **LOCAL FFMPEG VERIFIED:** actual FFmpeg render and ffprobe validation produced `360x640`, `3.00s`, `30.00fps`, `h264/aac`, container `mov,mp4,m4a,3gp,3g2,mj2` |
 | Local caption render | `.\.venv\Scripts\python.exe scripts/live_caption_smoke.py` | **LOCAL CAPTION RENDER VERIFIED:** actual libass/FFmpeg render produced `360x640`, `3.00s`, `30.00fps`, H.264/AAC plus a PNG preview |
-| Local dashboard HTTP/UI | `.\.venv\Scripts\python.exe scripts/live_dashboard_smoke.py` | **LOCAL DASHBOARD VERIFIED:** actual Uvicorn loopback server served pages, audio, raw/final MP4 and PNG, and accepted a CSRF-protected review |
+| Local dashboard and pilot HTTP/UI | `.\.venv\Scripts\python.exe scripts/live_dashboard_smoke.py` | **LOCAL DASHBOARD VERIFIED** and **LOCAL PILOT WORKFLOW VERIFIED:** actual Uvicorn loopback server exercised a five-candidate synthetic batch, structured quality approval and known-ID MP4/SRT downloads |
 | PostgreSQL offline migration generation | `python -m alembic upgrade head --sql` with a PostgreSQL URL | **Not verified:** existing revision `0002` performs a result-dependent data backfill that Alembic offline mode cannot execute |
 
 The suite includes complete discovery-to-approval workflows through both API and CLI with synthetic Pexels/Pixabay responses. Phase 2 coverage uses mocked video transport and Gemini clients to verify structured success, all eight ratings, weighted totals, evidence/version persistence, manual comparison, reuse, force, reweighting without another AI call, missing configuration, model and schema failures, expired/oversized/invalid assets, SSRF controls and cleanup after success or failure.
@@ -44,6 +44,8 @@ Phase 6 tests create the complete approved Phase 1–5 prerequisite graph, then 
 Phase 7 tests cover the approved-raw gate, script/narration linkage, final-timeline timing, provider and estimated alignment, `display_text`/`spoken_text` separation, punctuation segmentation, technical terms, number/unit grouping, word/character/line limits, reading speed, pause linger, three style profiles, relative safe areas, hook overlays, verified-claim overlays, rejected partial/unverified/contradicted facts, word-emphasis fallback, Unicode, ASS/SRT escaping, filter-injection resistance, lazy font and branding-path validation, atomic storage, checksums, reuse/force, preview, human review, API, CLI and migration tables.
 
 Phase 8A tests cover the operational home, filtered/paginated candidates, full candidate detail, pipeline state rendering, review queue, final-render review, timestamp controls, native media routes and MIME types, byte ranges, unknown IDs, relative/absolute/encoded traversal attempts, prerequisite-gated buttons, absence of paid work during page loads, HTML escaping, explicit preview generation, CSRF enforcement and approve/reject forms. No external service is contacted.
+
+Phase 8B tests cover a five-candidate batch, full stage resolution, explicit blockers and next actions, structured approval/rejection validation, 1–5 scores, checklist persistence, rejection-to-revision routing, call/version counters, batch summaries and safe known-ID MP4/SRT downloads. The HTTP smoke uses synthetic candidate records and therefore does not represent five reviewed real-source videos.
 
 ## Local FFmpeg verification
 
@@ -91,6 +93,7 @@ The module CLI was also executed directly for query generation, an empty top-can
 - **LOCAL FFMPEG VERIFIED:** the local BtbN build supplied real FFmpeg and ffprobe processes. The synthetic smoke generated and ffprobe-validated a non-empty MP4 with video and audio (`360x640`, 3.00 seconds, 30 fps, H.264/AAC, MP4-family container).
 - **LOCAL CAPTION RENDER VERIFIED:** real FFmpeg/libass burned the generated ASS captions and hook into a separate MP4; ffprobe validation and preview generation succeeded.
 - **LOCAL DASHBOARD VERIFIED:** an actual loopback Uvicorn server served the operational UI and known media assets, and a CSRF-protected human review succeeded over HTTP.
+- **LOCAL PILOT WORKFLOW VERIFIED:** a five-candidate synthetic/local batch, full progress page, structured final quality approval, persisted `READY` state and known-ID MP4/SRT downloads succeeded over actual loopback HTTP.
 
 ## Known limits of this verification
 
@@ -102,5 +105,6 @@ The module CLI was also executed directly for query generation, an empty top-can
 - The FFmpeg verification uses generated local media only. It does not verify provider download, live narration, source-cache behavior, publishing or production deployment.
 - The real caption smoke uses a compact 360x640 synthetic clip for speed. Production 1080x1920 rules, cache/versioning, factual overlays and branding are covered offline; optional branding with a real logo and custom font still needs project-specific visual review.
 - Dashboard security is verified for a trusted loopback-only process. It has no authentication, user sessions, role authorization, TLS termination or multi-worker CSRF coordination and must not be exposed publicly.
+- Five real-source pilots have not yet been reviewed. The synthetic pilot verifies software behavior only, so the product recommendation remains pending until five real videos complete the structured quality workflow.
 - Installed Starlette 1.7.0 emits a deprecation warning when its test client uses `httpx`: it recommends a future move to `httpx2` for tests. All tests pass with the locked version. The warning is visible, not suppressed, and does not affect the provider HTTP clients or local server verification.
 - Coverage is statement coverage for application code, not a guarantee of production readiness. The service remains intended for trusted local use.

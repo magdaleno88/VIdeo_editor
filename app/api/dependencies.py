@@ -15,6 +15,7 @@ from app.repositories.cache import SearchCacheRepository
 from app.repositories.candidates import CandidateRepository
 from app.repositories.captions import CaptionRepository
 from app.repositories.narrations import NarrationRepository
+from app.repositories.pilots import PilotRepository
 from app.repositories.renders import RenderRepository
 from app.repositories.research import ResearchRepository
 from app.repositories.scripts import ScriptRepository
@@ -29,6 +30,7 @@ from app.services.discovery.queries import TemplateQueryGenerator
 from app.services.discovery.service import DiscoveryService
 from app.services.narration.runtime import configured_narration_service
 from app.services.narration.service import NarrationReviewService, NarrationService
+from app.services.pilots import PilotService, QualityReviewService
 from app.services.rendering.runtime import configured_render_service, edit_plan_service
 from app.services.rendering.service import EditPlanService, RenderReviewService, RenderService
 from app.services.research.runtime import configured_research_service
@@ -173,4 +175,17 @@ def get_final_render_service(
 def get_final_render_review(session: SessionDep) -> FinalRenderReviewService:
     return FinalRenderReviewService(
         CandidateRepository(session), RenderRepository(session), CaptionRepository(session)
+    )
+
+
+def get_pilot_service(session: SessionDep) -> PilotService:
+    return PilotService(session)
+
+
+def get_quality_review(session: SessionDep) -> QualityReviewService:
+    return QualityReviewService(
+        CandidateRepository(session),
+        RenderRepository(session),
+        CaptionRepository(session),
+        PilotRepository(session),
     )

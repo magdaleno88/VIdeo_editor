@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Pilot batches · Industrial Content Factory{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">Phase 8B</p><h1>Real pilot batches</h1><p>Track at least five candidate videos through the existing pipeline.</p></div></section>
+<section class="panel">
+  <h2>Create a batch</h2>
+  <form method="post" action="/dashboard/pilots" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Name<input name="name" required maxlength="200"></label>
+    <label>Slug<input name="slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="pilot-september"></label>
+    <label>Candidate IDs<input name="candidate_ids" placeholder="1, 2, 3, 4, 5"></label>
+    <label>Description<textarea name="description" maxlength="2000"></textarea></label>
+    <button class="button primary" type="submit">Create pilot batch</button>
+  </form>
+</section>
+<section class="panel">
+  <div class="section-heading"><h2>Batches</h2><span>{{ result['total'] }} total</span></div>
+  <div class="card-grid">
+  {% for batch in result['items'] %}
+    <a class="candidate-card" href="/dashboard/pilots/{{ batch.id }}"><strong>{{ batch.name }}</strong><span>{{ batch.candidate_ids|length }} candidates</span><small>{{ batch.slug }} · {{ batch.created_at.strftime('%Y-%m-%d %H:%M') }}</small></a>
+  {% else %}<p class="empty">No pilot batches yet.</p>{% endfor %}
+  </div>
+</section>
+{% endblock %}
