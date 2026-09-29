@@ -5,9 +5,20 @@ from app.core.config import ScoringWeights
 from app.core.database import utcnow
 from app.core.errors import ConflictError
 from app.repositories.candidates import CandidateRepository, apply_score
-from app.schemas.domain import CandidateStatus, Idea, ReviewAction, RightsInfo, RightsReview
+from app.schemas.domain import (
+    CandidateStatus,
+    Idea,
+    ReviewAction,
+    RightsInfo,
+    RightsReview,
+    SourceLicensePreset,
+)
 from app.services.review import ReviewService
-from app.services.rights.policy import approval_blockers
+from app.services.rights.policy import (
+    approval_blockers,
+    is_cleared_for_commercial_publication,
+    license_preset,
+)
 from app.services.scoring.scorers import HeuristicVideoScorer
 
 
@@ -16,6 +27,32 @@ def test_public_url_is_not_permission():
     assert rights.rights_status == "UNKNOWN"
     assert rights.commercial_use_allowed is None
     assert approval_blockers(rights)
+    assert is_cleared_for_commercial_publication(rights) is False
+
+
+@pytest.mark.parametrize(
+    ("preset", "attribution", "share_alike"),
+    [
+        (SourceLicensePreset.CC0, False, False),
+        (SourceLicensePreset.PUBLIC_DOMAIN, False, False),
+        (SourceLicensePreset.CC_BY, True, False),
+        (SourceLicensePreset.CC_BY_SA, True, True),
+    ],
+)
+def test_source_license_presets_prefill_without_verifying(preset, attribution, share_alike):
+    values = license_preset(preset)
+    assert values.commercial_use_allowed is True
+    assert values.derivative_works_allowed is True
+    assert values.attribution_required is attribution
+    assert values.share_alike_required is share_alike
+    assert values.rights_status == "UNKNOWN"
+
+
+def test_custom_license_preset_makes_no_permission_assumptions():
+    values = license_preset(SourceLicensePreset.CUSTOM)
+    assert values.commercial_use_allowed is None
+    assert values.derivative_works_allowed is None
+    assert values.rights_status == "UNKNOWN"
 
 
 @pytest.mark.parametrize("status", ["UNKNOWN", "RESTRICTED", "MANUAL_REVIEW_REQUIRED"])

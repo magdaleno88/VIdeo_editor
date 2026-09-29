@@ -4,7 +4,57 @@
 <section class="page-head"><div><p class="eyebrow">Long-form source #{{ source.id }}</p><h1>{{ source.title }}</h1><p>{{ source.original_filename }} · {{ '%.1f'|format(source.duration_seconds) }}s · {{ source.width }}×{{ source.height }} · {{ source.video_codec }}{% if source.has_audio %} + {{ source.audio_codec }}{% endif %}</p></div></section>
 <section class="panel"><h2>Source player</h2><video id="source-player" controls preload="metadata" src="/dashboard/sources/{{ source.id }}/media"></video></section>
 <div class="two-col">
-<section class="panel"><h2>Rights</h2><p>Status: <strong>{{ source.rights.rights_status.value }}</strong></p><form method="post" action="/dashboard/sources/{{ source.id }}/actions/rights" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>License <input name="license_name" value="{{ source.rights.license_name or '' }}" required></label><label>Evidence reference <input name="evidence_reference" value="{{ source.rights.evidence_reference or '' }}" required></label><label><input type="checkbox" name="commercial_use_allowed" value="true" checked> Commercial use</label><label><input type="checkbox" name="derivative_works_allowed" value="true" checked> Derivative works</label><label><input type="checkbox" name="attribution_required" value="true"> Attribution required</label><label>Attribution <input name="attribution_text"></label><label>Reviewer <input name="reviewer" value="{{ default_reviewer }}"></label><label>Notes <textarea name="notes"></textarea></label><button type="submit">Verify source rights</button></form></section>
+<section class="panel rights-panel">
+  <h2>Source rights</h2>
+  <div class="rights-clearance {{ 'cleared' if source.rights.is_cleared_for_commercial_publication else 'uncleared' }}">
+    <strong>{{ source.rights.publication_clearance_label }}</strong>
+    <span>Current state: {{ source.rights.rights_status.value }}</span>
+  </div>
+  {% if not source.rights.is_cleared_for_commercial_publication %}
+  <p class="muted">Technical processing is available for internal testing. Publication and monetization remain uncleared.</p>
+  <form method="post" action="/dashboard/sources/{{ source.id }}/actions/internal" class="review-actions">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="reviewer" value="{{ default_reviewer }}">
+    <input type="hidden" name="notes" value="Continue as Test / Internal">
+    <button class="button primary" type="submit">Continue as Test / Internal</button>
+  </form>
+  {% endif %}
+  <details {% if source.rights.is_cleared_for_commercial_publication %}open{% endif %}>
+    <summary>Verify for commercial use</summary>
+    <form id="source-rights-form" method="post" action="/dashboard/sources/{{ source.id }}/actions/rights" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>License preset
+        <select name="license_preset" data-license-preset>
+          <option value="">Choose…</option>
+          {% for value, label in [('CC0','CC0'),('PUBLIC_DOMAIN','Public Domain'),('CC_BY','CC BY'),('CC_BY_SA','CC BY-SA'),('CUSTOM','Custom / Other')] %}
+          <option value="{{ value }}" {% if source.rights.license_preset and source.rights.license_preset.value == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>License name<input name="license_name" value="{{ source.rights.license_name or '' }}" required></label>
+      <label>License URL<input type="url" name="license_url" value="{{ source.rights.license_url or '' }}"></label>
+      <label>Source/file page or evidence<input name="evidence_reference" value="{{ source.rights.evidence_reference or '' }}" required></label>
+      <label>Creator<input name="creator" value="{{ source.rights.creator or '' }}"></label>
+      {% for name, label, current in [('commercial_use_allowed','Commercial use',source.rights.commercial_use_allowed),('derivative_works_allowed','Derivative works',source.rights.derivative_works_allowed),('attribution_required','Attribution required',source.rights.attribution_required),('share_alike_required','Share-alike required',source.rights.share_alike_required)] %}
+      <label>{{ label }}
+        <select name="{{ name }}">
+          <option value="" {% if current is none %}selected{% endif %}>Unknown</option>
+          <option value="true" {% if current is sameas true %}selected{% endif %}>Yes</option>
+          <option value="false" {% if current is sameas false %}selected{% endif %}>No</option>
+        </select>
+      </label>
+      {% endfor %}
+      <label>Attribution text<input name="attribution_text" value="{{ source.rights.attribution_text or '' }}"></label>
+      <label>Reviewer<input name="reviewer" value="{{ source.rights.reviewed_by or default_reviewer }}" required></label>
+      <label>Notes<textarea name="notes">{{ source.rights.notes }}</textarea></label>
+      <div class="button-row">
+        <button class="button approve" type="submit">Verify Rights</button>
+        <button class="button" type="submit" formaction="/dashboard/sources/{{ source.id }}/actions/restricted" formnovalidate>Save as Restricted</button>
+      </div>
+    </form>
+  </details>
+  {% if source.rights.verified_at %}<p class="muted">Verified {{ source.rights.verified_at.strftime('%Y-%m-%d %H:%M') }} by {{ source.rights.reviewed_by }}.</p>{% endif %}
+</section>
 <section class="panel"><h2>Local preprocessing</h2><form method="post" action="/dashboard/sources/{{ source.id }}/actions/scenes"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Detect scenes and frames</button></form><p class="muted">Balanced estimate: {{ analysis_budget.frames_selected }} frames, {{ analysis_budget.deep_moments }} deep windows, {{ analysis_budget.deep_minutes }} selected minutes, {{ analysis_budget.estimated_external_calls }} external calls for local analysis.</p><form method="post" action="/dashboard/sources/{{ source.id }}/actions/analyze" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Profile <select name="profile"><option>ECONOMY</option><option selected>BALANCED</option><option>QUALITY</option></select></label><button type="submit">Run local structural analysis</button><button type="submit" name="use_external_ai" value="true">Run external AI explicitly</button></form><form method="post" action="/dashboard/sources/{{ source.id }}/actions/concepts"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Ideas <input type="number" name="count" min="1" max="5" value="3"></label><button type="submit">Generate Reel concepts</button></form></section>
 </div>
 <section class="panel"><h2>Timeline</h2><div class="timeline" aria-label="Source timeline">{% if source.analyses %}{% for stage in source.analyses[-1].stages %}<button type="button" data-target="source-player" data-seek="{{ stage.start_seconds }}" style="left:{{ stage.start_seconds / source.duration_seconds * 100 }}%;width:{{ (stage.end_seconds-stage.start_seconds) / source.duration_seconds * 100 }}%" title="{{ stage.name }} · {{ stage.start_seconds }}–{{ stage.end_seconds }}s">{{ stage.name }}</button>{% endfor %}{% endif %}</div></section>

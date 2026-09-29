@@ -65,6 +65,11 @@ textarea { min-height: 80px; resize: vertical; }
 .notice { border-radius: 9px; padding: 11px 14px; margin-bottom: 18px; border: 1px solid; }
 .notice.success { background: #123d2c; border-color: #286a4c; color: #b7f7d4; }
 .notice.error { background: #461b1e; border-color: #7f3035; color: #ffc0c3; }
+.rights-clearance { display: grid; gap: 4px; padding: 14px; margin: 12px 0; border: 1px solid var(--border); border-radius: 9px; }
+.rights-clearance.cleared { border-color: var(--good); background: color-mix(in srgb, var(--good) 10%, transparent); }
+.rights-clearance.uncleared { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.rights-clearance span { color: var(--muted); font-size: .8rem; }
+.button-row { display: flex; flex-wrap: wrap; gap: 9px; align-items: end; }
 .compact-list { display: grid; margin-top: 12px; }
 .compact-list a { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
 .compact-list span { display: grid; }

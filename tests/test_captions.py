@@ -300,6 +300,20 @@ def test_final_render_storage_cache_preview_and_review(session, video, tmp_path)
     assert CandidateRepository(session).get(candidate.id)
 
 
+def test_test_only_final_render_persists_publication_warning(session, video, tmp_path):
+    candidate, _, _, raw = approved_raw(session, video, tmp_path)
+    candidate.provider = "long_form"
+    candidate.rights.rights_status = "UNKNOWN"
+    candidate.rights.commercial_use_allowed = None
+    candidate.rights.modification_allowed = None
+    candidate.rights.verification_date = None
+    candidate.rights.verified_by = None
+    plan = caption_service(session).create(raw.id, CaptionPlanRequest())
+    result = final_service(session, tmp_path).render(plan.id)
+    assert "TEST ASSET — RIGHTS NOT VERIFIED FOR PUBLICATION" in result.render.warnings
+    assert result.render.status == FinalRenderStatus.NEEDS_REVIEW
+
+
 def test_caption_api_and_migration(engine, session, video, tmp_path, monkeypatch):
     _, _, _, raw = approved_raw(session, video, tmp_path)
     session.commit()

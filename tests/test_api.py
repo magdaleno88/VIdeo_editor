@@ -28,6 +28,17 @@ def test_health_openapi_and_query_generation(client):
     assert "thread rolling machine" in response.json()
 
 
+def test_source_rights_presets_never_auto_verify(client):
+    response = client.get("/source-rights/license-presets")
+    assert response.status_code == 200
+    presets = {item["preset"]: item for item in response.json()}
+    assert presets["CC_BY"]["attribution_required"] is True
+    assert presets["CC_BY_SA"]["share_alike_required"] is True
+    assert presets["CC0"]["commercial_use_allowed"] is True
+    assert presets["PUBLIC_DOMAIN"]["derivative_works_allowed"] is True
+    assert all(item["rights_status"] == "UNKNOWN" for item in presets.values())
+
+
 def test_end_to_end_discover_cache_filter_review(client, rights_review):
     first = discover(client, category="metal", process_name="cold heading")
     assert first["created"] == 2

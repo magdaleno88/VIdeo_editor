@@ -82,6 +82,7 @@ from app.schemas.domain import (
     ScriptReviewRequest,
     ShortFormConceptRead,
     SourceAnalysisRequest,
+    SourceLicensePresetRead,
     SourceRightsReview,
     SourceTranscriptionRequest,
     VideoEditPlanRead,
@@ -169,6 +170,17 @@ def sources(service: SourceDep) -> list[LongFormSourceRead]:
     return service.list()
 
 
+@router.get(
+    "/source-rights/license-presets",
+    response_model=list[SourceLicensePresetRead],
+    tags=["sources"],
+)
+def source_rights_license_presets():
+    from app.services.rights.policy import license_presets
+
+    return license_presets()
+
+
 @router.get("/sources/{source_id}", response_model=LongFormSourceRead, tags=["sources"])
 def source(source_id: int, service: SourceDep) -> LongFormSourceRead:
     return service.get(source_id)
@@ -177,6 +189,15 @@ def source(source_id: int, service: SourceDep) -> LongFormSourceRead:
 @router.post("/sources/{source_id}/rights", response_model=LongFormSourceRead, tags=["sources"])
 def source_rights(source_id: int, body: SourceRightsReview, service: SourceDep):
     return service.review_rights(source_id, body)
+
+
+@router.post(
+    "/sources/{source_id}/continue-internal",
+    response_model=LongFormSourceRead,
+    tags=["sources"],
+)
+def source_continue_internal(source_id: int, body: ReviewAction, service: SourceDep):
+    return service.continue_as_internal(source_id, body)
 
 
 @router.post(

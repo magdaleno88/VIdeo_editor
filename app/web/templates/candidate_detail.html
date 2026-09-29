@@ -9,6 +9,7 @@
   <div><p class="eyebrow">Candidate #{{ candidate.id }} · {{ candidate.provider }}</p><h1>{{ candidate.title }}</h1><p>{{ candidate.object_being_manufactured }}{% if candidate.industrial_process %} · {{ candidate.industrial_process }}{% endif %}</p></div>
   <div class="status-cluster">{{ badge(candidate.status) }} {{ badge(candidate.rights_status) }}</div>
 </section>
+{% if not commercial_rights_cleared %}<div class="rights-clearance uncleared"><strong>TEST ASSET — RIGHTS NOT VERIFIED FOR PUBLICATION</strong><span>{{ rights_label }}</span></div>{% endif %}
 {{ pipeline_view(pipeline) }}
 
 <div class="detail-layout">

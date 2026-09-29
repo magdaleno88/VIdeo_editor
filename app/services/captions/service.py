@@ -19,6 +19,7 @@ from app.models import (
     FinalRenderReview,
     GraphicOverlay,
     ResearchClaim,
+    VideoCandidate,
 )
 from app.providers.captions import ASSSubtitleRenderer, CaptionFFmpegRenderer, SRTSubtitleRenderer
 from app.providers.captions.ass import emphasis_spans
@@ -45,6 +46,7 @@ from app.schemas.domain import (
 from app.services.captions.planning import segment_caption
 from app.services.captions.storage import CaptionStorage
 from app.services.rendering.storage import sha256_file
+from app.services.rights.policy import is_cleared_for_commercial_publication
 
 PLANNER_VERSION = "caption-planner-1.0"
 FINAL_RENDER_VERSION = "final-render-1.0"
@@ -468,6 +470,10 @@ class FinalRenderService:
             reused = self.captions.reusable_render(cache_key)
             if reused:
                 return FinalRenderResponse(render=final_render_read(reused), reused=True)
+        warnings = list(plan.warnings)
+        candidate = self.renders.session.get(VideoCandidate, raw.candidate_id)
+        if candidate and not is_cleared_for_commercial_publication(candidate.rights):
+            warnings.append("TEST ASSET — RIGHTS NOT VERIFIED FOR PUBLICATION")
         asset = FinalRenderAsset(
             caption_plan_id=plan.id,
             raw_render_id=raw.id,
@@ -487,7 +493,7 @@ class FinalRenderService:
             subtitle_renderer_version=self.ass_renderer.version,
             ffmpeg_version=self.renderer.ffmpeg_version,
             status=FinalRenderStatus.RENDERING,
-            warnings=list(plan.warnings),
+            warnings=warnings,
             cache_key=cache_key,
             failure_reason="",
             process_exit_code=None,

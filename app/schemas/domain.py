@@ -35,6 +35,14 @@ class RightsStatus(StrEnum):
     MANUAL_REVIEW_REQUIRED = "MANUAL_REVIEW_REQUIRED"
 
 
+class SourceLicensePreset(StrEnum):
+    CC0 = "CC0"
+    PUBLIC_DOMAIN = "PUBLIC_DOMAIN"
+    CC_BY = "CC_BY"
+    CC_BY_SA = "CC_BY_SA"
+    CUSTOM = "CUSTOM"
+
+
 class Orientation(StrEnum):
     PORTRAIT = "portrait"
     LANDSCAPE = "landscape"
@@ -1283,6 +1291,9 @@ class PilotProgressRead(Contract):
     elapsed_seconds: float | None
     technical_warnings: list[str]
     high_risk_flags: list[str]
+    technically_ready: bool
+    commercial_rights_cleared: bool
+    rights_label: str
 
 
 class LongFormSourceType(StrEnum):
@@ -1329,10 +1340,14 @@ class ShortFormClipRole(StrEnum):
 
 class SourceRightsReview(Contract):
     rights_status: RightsStatus
+    license_preset: SourceLicensePreset | None = None
     license_name: NonEmpty | None = None
+    license_url: HttpUrl | None = None
+    creator: Annotated[str, Field(max_length=500)] | None = None
     commercial_use_allowed: bool | None = None
     derivative_works_allowed: bool | None = None
     attribution_required: bool | None = None
+    share_alike_required: bool | None = None
     attribution_text: Annotated[str, Field(max_length=4000)] | None = None
     evidence_reference: Annotated[str, Field(max_length=2000)] | None = None
     reviewer: NonEmpty
@@ -1347,23 +1362,52 @@ class SourceRightsReview(Contract):
                 raise ValueError("Verified source rights require commercial and derivative use")
             if self.attribution_required is None:
                 raise ValueError("Verified source rights require an attribution decision")
-            if self.attribution_required and not self.attribution_text:
-                raise ValueError("Required attribution text is missing")
+            if self.attribution_required and not (self.creator and self.attribution_text):
+                raise ValueError("Required creator and attribution text are missing")
         return self
+
+
+class SourceLicensePresetRead(Contract):
+    preset: SourceLicensePreset
+    license_name: str | None
+    license_url: str | None
+    commercial_use_allowed: bool | None
+    derivative_works_allowed: bool | None
+    attribution_required: bool | None
+    share_alike_required: bool | None
+    rights_status: RightsStatus = RightsStatus.UNKNOWN
 
 
 class SourceRightsRead(Contract):
     source_id: int
     rights_status: RightsStatus
+    license_preset: SourceLicensePreset | None
     license_name: str | None
+    license_url: str | None
+    creator: str | None
     commercial_use_allowed: bool | None
     derivative_works_allowed: bool | None
     attribution_required: bool | None
+    share_alike_required: bool | None
     attribution_text: str | None
     evidence_reference: str | None
     reviewed_by: str | None
     verified_at: datetime | None
     notes: str
+
+    @computed_field
+    @property
+    def is_cleared_for_commercial_publication(self) -> bool:
+        from app.services.rights.policy import is_cleared_for_commercial_publication
+
+        return is_cleared_for_commercial_publication(self)
+
+    @computed_field
+    @property
+    def publication_clearance_label(self) -> str:
+        from app.services.rights.policy import publication_clearance_label
+
+        return publication_clearance_label(self)
 
 
 class SourceSceneRead(Contract):

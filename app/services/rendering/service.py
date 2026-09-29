@@ -22,7 +22,6 @@ from app.schemas.domain import (
     RenderResponse,
     RenderReviewRequest,
     RenderStatus,
-    RightsInfo,
     ScriptStatus,
     SourceAudioPolicy,
     TransitionType,
@@ -33,7 +32,7 @@ from app.services.rendering.storage import (
     RenderStorage,
     sha256_file,
 )
-from app.services.rights.policy import approval_blockers
+from app.services.rights.policy import local_processing_rights_blockers
 
 PLANNER_VERSION = "1.0"
 RENDER_VERSION = "1.0"
@@ -158,7 +157,7 @@ class EditPlanService:
         candidate = self.candidates.get(candidate_id)
         if candidate.status != CandidateStatus.APPROVED:
             raise ConflictError("Rendering requires an approved candidate")
-        blockers = approval_blockers(RightsInfo.model_validate(candidate.rights))
+        blockers = local_processing_rights_blockers(candidate)
         if blockers:
             raise ConflictError("Rendering rights are no longer valid: " + "; ".join(blockers))
         script = self.scripts.get(script_id)
@@ -451,11 +450,9 @@ class RenderService:
 
     def _prerequisites(self, plan):
         candidate = self.candidates.get(plan.candidate_id)
-        blockers = approval_blockers(RightsInfo.model_validate(candidate.rights))
+        blockers = local_processing_rights_blockers(candidate)
         if candidate.status != CandidateStatus.APPROVED or blockers:
-            raise ConflictError(
-                "Candidate approval or verified rendering rights are no longer valid"
-            )
+            raise ConflictError("Candidate approval or local processing rights are no longer valid")
         script = self.scripts.get(plan.script_id)
         narration = self.narrations.get(plan.narration_id)
         if script.status != ScriptStatus.APPROVED:

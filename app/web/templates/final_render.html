@@ -5,6 +5,7 @@
 {% block title %}Final render #{{ render.id }} · Industrial Content Factory{% endblock %}
 {% block content %}
 <section class="page-heading"><div><p class="eyebrow">Final render review</p><h1>{{ candidate.title if candidate else 'Final render' }}</h1><p>Version #{{ render.id }} · {{ plan.style_profile.value }} captions</p></div>{{ badge(render.status) }}</section>
+{% if not commercial_rights_cleared %}<div class="rights-clearance uncleared"><strong>TEST ASSET — RIGHTS NOT VERIFIED FOR PUBLICATION</strong><span>{{ rights_label }}</span></div>{% endif %}
 <div class="review-layout">
   <section class="portrait-stage">{% if render.output_path %}{{ video_player('/media/final-render/' ~ render.id, 'final-video') }}{% else %}<div class="empty">Render media is unavailable.</div>{% endif %}</section>
   <aside class="panel review-metadata">
@@ -17,7 +18,8 @@
 
 <section class="panel">
   <div class="section-heading"><h2>Structured final quality review</h2><span>Human decision · 1–5 scoring</span></div>
-  <p><a class="button" href="/downloads/final-render/{{ render.id }}.mp4">Download MP4</a>{% if render.srt_path %} <a class="button" href="/downloads/final-render/{{ render.id }}.srt">Download SRT</a>{% endif %}</p>
+  {% set download_warning = 'This source has not been cleared for commercial publication.' if not commercial_rights_cleared else '' %}
+  <p><a class="button" href="/downloads/final-render/{{ render.id }}.mp4"{% if download_warning %} data-confirm="{{ download_warning }}"{% endif %}>Download MP4</a>{% if render.srt_path %} <a class="button" href="/downloads/final-render/{{ render.id }}.srt"{% if download_warning %} data-confirm="{{ download_warning }}"{% endif %}>Download SRT</a>{% endif %}</p>
   <form method="post" action="/dashboard/final-renders/{{ render.id }}/quality-review" class="form-grid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_to" value="/dashboard/final-renders/{{ render.id }}">
     <label>Reviewer<input name="reviewer" value="{{ default_reviewer }}" required></label>

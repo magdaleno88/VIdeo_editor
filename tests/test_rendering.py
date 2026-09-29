@@ -190,6 +190,25 @@ def test_revoked_rights_block_a_new_plan(session, approved_assets):
         )
 
 
+def test_unreviewed_long_form_candidate_can_plan_and_render_locally(
+    session, approved_assets, tmp_path
+):
+    candidate, script, narration = approved_assets
+    candidate.provider = "long_form"
+    candidate.rights.rights_status = "UNKNOWN"
+    candidate.rights.commercial_use_allowed = None
+    candidate.rights.modification_allowed = None
+    candidate.rights.verification_date = None
+    candidate.rights.verified_by = None
+    plan = planner(session).create(
+        candidate.id,
+        RenderPlanRequest(script_id=script.id, narration_id=narration.id),
+    )
+    result = render_service(session, tmp_path, FakeRenderer()).render(plan.id)
+    assert result.render.status in (RenderStatus.VALIDATED, RenderStatus.NEEDS_REVIEW)
+    assert candidate.rights.rights_status == "UNKNOWN"
+
+
 def test_edit_plan_uses_hook_alignment_visual_refs_speed_and_cache(session, approved_assets):
     candidate, script, narration = approved_assets
     service = planner(session)

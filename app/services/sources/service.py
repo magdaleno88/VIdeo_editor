@@ -146,15 +146,32 @@ class LongFormSourceService:
         source = self.sources.get(source_id)
         rights = source.rights
         rights.rights_status = review.rights_status
+        rights.license_preset = review.license_preset
         rights.license_name = review.license_name
+        rights.license_url = str(review.license_url) if review.license_url else None
+        rights.creator = review.creator
         rights.commercial_use_allowed = review.commercial_use_allowed
         rights.derivative_works_allowed = review.derivative_works_allowed
         rights.attribution_required = review.attribution_required
+        rights.share_alike_required = review.share_alike_required
         rights.attribution_text = review.attribution_text
         rights.evidence_reference = review.evidence_reference
         rights.reviewed_by = review.reviewer
         rights.verified_at = utcnow() if review.rights_status == RightsStatus.VERIFIED else None
         rights.notes = review.notes
+        self._sync_candidate_rights(source)
+        self.session.flush()
+        return LongFormSourceRead.model_validate(source)
+
+    def continue_as_internal(self, source_id: int, action: ReviewAction) -> LongFormSourceRead:
+        source = self.sources.get(source_id)
+        rights = source.rights
+        if rights.rights_status != RightsStatus.VERIFIED:
+            rights.reviewed_by = action.reviewer
+            rights.verified_at = None
+            note = "Internal/test processing selected; commercial publication remains uncleared."
+            rights.notes = " ".join(value for value in (rights.notes, note, action.notes) if value)
+            self._sync_candidate_rights(source)
         self.session.flush()
         return LongFormSourceRead.model_validate(source)
 
@@ -388,13 +405,6 @@ class LongFormSourceService:
     def approve_concept(self, concept_id: int, action: ReviewAction) -> ShortFormConceptRead:
         concept = self.sources.get_concept(concept_id)
         source = self.sources.get(concept.source_id)
-        rights = source.rights
-        if not (
-            rights.rights_status == RightsStatus.VERIFIED
-            and rights.commercial_use_allowed is True
-            and rights.derivative_works_allowed is True
-        ):
-            raise ConflictError("Concept approval requires verified source-level production rights")
         if concept.candidate_id is None:
             candidate = self._candidate_from_concept(source, concept)
             self.session.add(candidate)
@@ -412,9 +422,7 @@ class LongFormSourceService:
         return ShortFormConceptRead.model_validate(concept)
 
     def _candidate_from_concept(self, source, concept):
-        rights = source.rights
-        evidence = f"https://local.invalid/sources/{source.id}/rights"
-        return VideoCandidate(
+        candidate = VideoCandidate(
             provider="long_form",
             provider_video_id=f"{source.id}:{concept.id}",
             source_url=f"https://local.invalid/sources/{source.id}",
@@ -428,32 +436,52 @@ class LongFormSourceService:
             orientation=Orientation.PORTRAIT
             if source.height > source.width
             else Orientation.LANDSCAPE,
-            author="Local operator",
+            author=source.rights.creator,
             author_url=None,
             search_query="long-form source",
             category="long-form",
             industrial_process=source.title,
             object_being_manufactured=source.title,
             status=CandidateStatus.APPROVED,
-            rights=RightsRecord(
-                source=f"https://local.invalid/sources/{source.id}",
-                creator="Local operator",
-                license_name=rights.license_name,
-                license_url=evidence,
-                commercial_use_allowed=True,
-                modification_allowed=True,
-                attribution_required=rights.attribution_required,
-                attribution_text=rights.attribution_text,
-                rights_status=RightsStatus.VERIFIED,
-                verification_date=rights.verified_at,
-                verified_by=rights.reviewed_by,
-                evidence_url=evidence,
-                notes=(
-                    f"Inherited from LongFormSource #{source.id}: "
-                    f"{rights.evidence_reference}. {rights.notes}"
-                ),
-            ),
+            rights=RightsRecord(source="", notes=""),
         )
+        self._apply_source_rights(candidate.rights, source)
+        return candidate
+
+    def _sync_candidate_rights(self, source) -> None:
+        for concept in source.concepts:
+            if concept.candidate_id is None:
+                continue
+            candidate = self.session.get(VideoCandidate, concept.candidate_id)
+            if candidate is not None:
+                candidate.author = source.rights.creator
+                self._apply_source_rights(candidate.rights, source)
+
+    @staticmethod
+    def _apply_source_rights(target: RightsRecord, source) -> None:
+        rights = source.rights
+        canonical = f"https://local.invalid/sources/{source.id}"
+        evidence = rights.evidence_reference or ""
+        evidence_url = evidence if evidence.startswith(("http://", "https://")) else None
+        share_alike = "Share-alike required. " if rights.share_alike_required is True else ""
+        target.source = canonical
+        target.creator = rights.creator
+        target.license_name = rights.license_name
+        target.license_url = rights.license_url
+        target.commercial_use_allowed = rights.commercial_use_allowed
+        target.modification_allowed = rights.derivative_works_allowed
+        target.attribution_required = rights.attribution_required
+        target.attribution_text = rights.attribution_text
+        target.rights_status = rights.rights_status
+        target.verification_date = rights.verified_at
+        target.verified_by = (
+            rights.reviewed_by if rights.rights_status == RightsStatus.VERIFIED else None
+        )
+        target.evidence_url = evidence_url or f"{canonical}/rights"
+        target.notes = (
+            f"Inherited from LongFormSource #{source.id}. {share_alike}"
+            f"Evidence: {evidence or 'not supplied'}. {rights.notes}"
+        ).strip()
 
     def _structural_evaluation(self, source, concept):
         ratings = ScoreInputs(

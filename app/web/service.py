@@ -31,6 +31,10 @@ from app.schemas.domain import (
     RightsStatus,
     ScriptStatus,
 )
+from app.services.rights.policy import (
+    is_cleared_for_commercial_publication,
+    publication_clearance_label,
+)
 
 REVIEWABLE_RENDER = (RenderStatus.VALIDATED, RenderStatus.NEEDS_REVIEW)
 REVIEWABLE_FINAL = (FinalRenderStatus.VALIDATED, FinalRenderStatus.NEEDS_REVIEW)
@@ -283,6 +287,14 @@ class DashboardService:
         )
         return {
             "candidate": candidate,
+            "commercial_rights_cleared": bool(
+                candidate and is_cleared_for_commercial_publication(candidate.rights)
+            ),
+            "rights_label": (
+                publication_clearance_label(candidate.rights)
+                if candidate
+                else "NOT CLEARED FOR PUBLICATION"
+            ),
             "evaluations": evaluations,
             "latest_ai": latest_ai,
             "dossier": dossier,
@@ -450,6 +462,14 @@ class DashboardService:
             "plan": plan,
             "raw": raw,
             "candidate": candidate,
+            "commercial_rights_cleared": bool(
+                candidate and is_cleared_for_commercial_publication(candidate.rights)
+            ),
+            "rights_label": (
+                publication_clearance_label(candidate.rights)
+                if candidate
+                else "NOT CLEARED FOR PUBLICATION"
+            ),
             "script": script,
             "narration": narration,
             "versions": versions,

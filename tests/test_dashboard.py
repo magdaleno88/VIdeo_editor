@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.main import create_app
-from app.models import VideoCandidate
+from app.models import LongFormSource, SourceRights, VideoCandidate
 from app.repositories.candidates import CandidateRepository
 from app.repositories.captions import CaptionRepository
 from app.repositories.narrations import NarrationRepository
@@ -223,6 +223,107 @@ def test_preview_is_not_generated_on_page_load(dashboard_data):
     assert "Generate at 1.5 s" in response.text
     with app.state.session_factory() as session:
         assert CaptionRepository(session).get_render(ids["final"]).preview_path is None
+
+
+def test_test_asset_render_and_download_show_rights_warning(dashboard_data):
+    client, ids, app = dashboard_data
+    with app.state.session_factory.begin() as session:
+        candidate = session.get(VideoCandidate, ids["candidate"])
+        candidate.provider = "long_form"
+        candidate.rights.rights_status = "UNKNOWN"
+        candidate.rights.commercial_use_allowed = None
+        candidate.rights.modification_allowed = None
+        candidate.rights.verification_date = None
+        candidate.rights.verified_by = None
+    detail = client.get(f"/dashboard/final-renders/{ids['final']}")
+    assert "TEST ASSET — RIGHTS NOT VERIFIED FOR PUBLICATION" in detail.text
+    assert "This source has not been cleared for commercial publication." in detail.text
+    download = client.get(f"/downloads/final-render/{ids['final']}.mp4")
+    assert download.status_code == 200
+    assert download.headers["x-commercial-publication-cleared"] == "false"
+    assert "not been cleared" in download.headers["x-rights-warning"]
+
+
+def test_source_rights_ui_offers_internal_mode_and_presets(dashboard_data, monkeypatch, tmp_path):
+    client, ids, app = dashboard_data
+
+    class DashboardSourceStorage:
+        def __init__(self, *args, **kwargs):
+            self.root = tmp_path
+            self.incoming = tmp_path
+
+    monkeypatch.setattr("app.services.sources.service.SourceStorage", DashboardSourceStorage)
+    with app.state.session_factory.begin() as session:
+        source = LongFormSource(
+            title="Internal source",
+            source_type="LOCAL_UPLOAD",
+            original_filename="internal.mp4",
+            relative_path="internal/original.mp4",
+            checksum_sha256="b" * 64,
+            size_bytes=100,
+            duration_seconds=30,
+            width=1920,
+            height=1080,
+            fps=30,
+            video_codec="h264",
+            audio_codec="aac",
+            has_audio=True,
+            container="mov,mp4",
+            rotation=0,
+            status="INGESTED",
+            rights=SourceRights(rights_status="UNKNOWN", notes=""),
+        )
+        session.add(source)
+        session.flush()
+        source_id = source.id
+    page = client.get(f"/dashboard/sources/{source_id}")
+    assert page.status_code == 200
+    assert "NOT CLEARED FOR PUBLICATION" in page.text
+    assert "Continue as Test / Internal" in page.text
+    for label in ("CC0", "Public Domain", "CC BY", "CC BY-SA", "Custom / Other"):
+        assert label in page.text
+    response = client.post(
+        f"/dashboard/sources/{source_id}/actions/internal",
+        data={
+            "csrf_token": ids["csrf"],
+            "reviewer": "Dashboard tester",
+            "notes": "Test only",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    with app.state.session_factory() as session:
+        assert session.get(LongFormSource, source_id).rights.rights_status == "UNKNOWN"
+
+
+def test_test_only_pilot_tracks_technical_and_commercial_readiness_separately(
+    dashboard_data,
+):
+    client, ids, app = dashboard_data
+    with app.state.session_factory.begin() as session:
+        candidate = session.get(VideoCandidate, ids["candidate"])
+        candidate.provider = "long_form"
+        candidate.rights.rights_status = "RESTRICTED"
+        candidate.rights.commercial_use_allowed = False
+        candidate.rights.modification_allowed = False
+        candidate.rights.verification_date = None
+        candidate.rights.verified_by = None
+    batch = client.post(
+        "/pilot-batches",
+        json={
+            "name": "Internal rights pilot",
+            "slug": "internal-rights-pilot",
+            "description": "Technical validation without publication clearance",
+            "candidate_ids": [ids["candidate"]],
+        },
+    ).json()
+    progress = client.get(f"/pilot-batches/{batch['id']}/candidates/{ids['candidate']}").json()
+    assert progress["commercial_rights_cleared"] is False
+    assert progress["technically_ready"] is False
+    assert progress["rights_label"].startswith("RESTRICTED")
+    assert progress["next_action"] != "Verify rights"
+    rights_stage = next(item for item in progress["stages"] if item["key"] == "rights")
+    assert rights_stage["status"] == "NOT_CLEARED"
 
 
 def test_pilot_batch_quality_review_and_safe_downloads(dashboard_data, video):

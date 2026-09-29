@@ -1,6 +1,6 @@
 # Local verification report
 
-Verified on 2026-09-28 in Windows PowerShell, from the project root.
+Verified on 2026-09-29 in Windows PowerShell, from the project root.
 
 ## Environment
 
@@ -8,13 +8,13 @@ Verified on 2026-09-28 in Windows PowerShell, from the project root.
 - Windows 10 Pro, version 25H2 (build 26200.9445), running PowerShell 7.6.5.
 - The system Python launcher reported no registered Python installations. The available Codex runtime at `C:/Users/USER/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe` was used only to create the virtual environment.
 - Runtime/development dependencies were installed into that virtual environment. Exact installed package versions are recorded in `requirements.lock`; project constraints are in `pyproject.toml`.
-- SQLite development database migrated to revision `0009` at `data/industrial_content_factory.db`.
+- SQLite development database migrated to revision `0010` at `data/industrial_content_factory.db`.
 
 ## Results
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Offline unit/integration suite | `.\.venv\Scripts\python.exe -m pytest -q --cov=app --cov-report=term-missing` | **212 passed**, 1 upstream deprecation warning; **89% statement coverage** for `app` (7,442 statements, 807 not covered) |
+| Offline unit/integration suite | `.\.venv\Scripts\python.exe -m pytest -q --cov=app --cov-report=term-missing` | **224 passed**, 1 upstream deprecation warning; **89% statement coverage** for `app` |
 | Phase 3 focused suite | `.\.venv\Scripts\python.exe -m pytest -q tests/test_research.py tests/test_research_providers.py tests/test_research_api_cli.py` | **21 passed**, 1 upstream deprecation warning |
 | Phase 4 focused suite | `.\.venv\Scripts\python.exe -m pytest -q tests/test_scripting.py tests/test_scripting_provider.py tests/test_scripting_api_cli.py` | **9 passed**, 1 upstream deprecation warning |
 | Phase 5 focused suite | `.\.venv\Scripts\python.exe -m pytest -q tests/test_narration.py tests/test_elevenlabs_tts.py` | **7 passed**, 1 upstream deprecation warning |
@@ -50,6 +50,8 @@ Phase 8A tests cover the operational home, filtered/paginated candidates, full c
 Phase 8B tests cover a five-candidate batch, full stage resolution, explicit blockers and next actions, structured approval/rejection validation, 1–5 scores, checklist persistence, rejection-to-revision routing, call/version counters, batch summaries and safe known-ID MP4/SRT downloads. The HTTP smoke uses synthetic candidate records and therefore does not represent five reviewed real-source videos.
 
 Phase 9 tests cover source-rights validation, timestamp bounds, non-chronological story order, scene merge/cap behavior, display-rotation normalization, storage confinement, initial extension filtering and the complete real local smoke. The smoke streams and probes a generated 60-second source, verifies checksum reuse, extracts six representative frames, stores a timestamped mock transcript, creates stages/moments and three concepts, approves two independent derived candidates, and performs a real FFmpeg multi-window render.
+
+The source-rights follow-up tests verify that unknown and restricted long-form sources remain uncleared for publication while scene detection, structural analysis, concept approval and local rendering continue. They also cover CC0, Public Domain, CC BY and CC BY-SA preset defaults without automatic verification; rights propagation and attribution provenance; strict commercial/derivative validation for `VERIFIED`; separate pilot technical/commercial readiness; prominent final-render warnings; and warning metadata on permitted test-only downloads. Migration `0010` is covered by upgrade, model-drift check, downgrade and re-upgrade.
 
 ## Local FFmpeg verification
 

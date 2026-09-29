@@ -25,6 +25,7 @@ from app.models import (
     NarrationAsset,
     RenderAsset,
     ResearchDossier,
+    VideoCandidate,
 )
 from app.providers.registry import configured_providers
 from app.repositories.cache import SearchCacheRepository
@@ -56,6 +57,7 @@ from app.schemas.domain import (
     ScriptGenerationRequest,
     ScriptReviewRequest,
     SourceAnalysisRequest,
+    SourceLicensePreset,
     SourceRightsReview,
 )
 from app.services.captions.runtime import caption_plan_service
@@ -68,6 +70,7 @@ from app.services.rendering.runtime import edit_plan_service
 from app.services.rendering.service import RenderReviewService
 from app.services.research.service import ResearchReviewService
 from app.services.review import ReviewService
+from app.services.rights.policy import is_cleared_for_commercial_publication
 from app.services.scoring.scorers import HeuristicVideoScorer
 from app.services.scripting.service import ScriptReviewService
 from app.services.sources.service import LongFormSourceService
@@ -94,6 +97,24 @@ def _redirect(target: str, *, notice: str | None = None, error: str | None = Non
     )
     separator = "&" if "?" in target else "?"
     return RedirectResponse(target + (separator + query if query else ""), status_code=303)
+
+
+def _optional_bool(value: str | None) -> bool | None:
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    return None
+
+
+def _download_rights_headers(asset: FinalRenderAsset, session) -> dict[str, str]:
+    raw = session.get(RenderAsset, asset.raw_render_id)
+    candidate = session.get(VideoCandidate, raw.candidate_id) if raw else None
+    cleared = bool(candidate and is_cleared_for_commercial_publication(candidate.rights))
+    headers = {"X-Commercial-Publication-Cleared": str(cleared).lower()}
+    if not cleared:
+        headers["X-Rights-Warning"] = "This source has not been cleared for commercial publication."
+    return headers
 
 
 @router.get("/", response_class=HTMLResponse, name="dashboard_home")
@@ -190,15 +211,56 @@ async def source_action(request: Request, source_id: int, action: str, session: 
                 source_id,
                 SourceRightsReview(
                     rights_status=RightsStatus.VERIFIED,
+                    license_preset=(
+                        SourceLicensePreset(values["license_preset"])
+                        if values.get("license_preset")
+                        else None
+                    ),
                     license_name=values.get("license_name"),
-                    commercial_use_allowed=values.get("commercial_use_allowed") == "true",
-                    derivative_works_allowed=values.get("derivative_works_allowed") == "true",
-                    attribution_required=values.get("attribution_required") == "true",
+                    license_url=values.get("license_url") or None,
+                    creator=values.get("creator") or None,
+                    commercial_use_allowed=_optional_bool(values.get("commercial_use_allowed")),
+                    derivative_works_allowed=_optional_bool(values.get("derivative_works_allowed")),
+                    attribution_required=_optional_bool(values.get("attribution_required")),
+                    share_alike_required=_optional_bool(values.get("share_alike_required")),
                     attribution_text=values.get("attribution_text") or None,
                     evidence_reference=values.get("evidence_reference"),
                     reviewer=values.get("reviewer")
                     or request.app.state.settings.dashboard_default_reviewer,
                     notes=values.get("notes", ""),
+                ),
+            )
+        elif action == "restricted":
+            service.review_rights(
+                source_id,
+                SourceRightsReview(
+                    rights_status=RightsStatus.RESTRICTED,
+                    license_preset=(
+                        SourceLicensePreset(values["license_preset"])
+                        if values.get("license_preset")
+                        else None
+                    ),
+                    license_name=values.get("license_name") or None,
+                    license_url=values.get("license_url") or None,
+                    creator=values.get("creator") or None,
+                    commercial_use_allowed=_optional_bool(values.get("commercial_use_allowed")),
+                    derivative_works_allowed=_optional_bool(values.get("derivative_works_allowed")),
+                    attribution_required=_optional_bool(values.get("attribution_required")),
+                    share_alike_required=_optional_bool(values.get("share_alike_required")),
+                    attribution_text=values.get("attribution_text") or None,
+                    evidence_reference=values.get("evidence_reference") or None,
+                    reviewer=values.get("reviewer")
+                    or request.app.state.settings.dashboard_default_reviewer,
+                    notes=values.get("notes", ""),
+                ),
+            )
+        elif action == "internal":
+            service.continue_as_internal(
+                source_id,
+                ReviewAction(
+                    reviewer=values.get("reviewer")
+                    or request.app.state.settings.dashboard_default_reviewer,
+                    notes=values.get("notes") or "Internal/test processing selected.",
                 ),
             )
         elif action == "scenes":
@@ -468,7 +530,12 @@ def download_final_render(asset_id: int, session: SessionDep, request: Request):
     if asset is None:
         raise NotFoundError(f"Final render {asset_id} was not found")
     path = resolve_persisted_file(request.app.state.settings.render_storage_root, asset.output_path)
-    return FileResponse(path, media_type="video/mp4", filename=f"final-render-{asset.id}.mp4")
+    return FileResponse(
+        path,
+        media_type="video/mp4",
+        filename=f"final-render-{asset.id}.mp4",
+        headers=_download_rights_headers(asset, session),
+    )
 
 
 @router.get("/downloads/final-render/{asset_id}.srt", name="download_final_srt")
@@ -481,6 +548,7 @@ def download_final_srt(asset_id: int, session: SessionDep, request: Request):
         path,
         media_type="application/x-subrip",
         filename=f"final-render-{asset.id}.srt",
+        headers=_download_rights_headers(asset, session),
     )
 
 

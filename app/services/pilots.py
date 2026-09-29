@@ -46,10 +46,13 @@ from app.schemas.domain import (
     RenderStatus,
     ResearchStatus,
     RevisionStage,
-    RightsStatus,
     ScriptStatus,
 )
 from app.services.captions.service import FinalRenderReviewService
+from app.services.rights.policy import (
+    is_cleared_for_commercial_publication,
+    publication_clearance_label,
+)
 
 REVISION_ROUTES: dict[QualityRejectionCategory, RevisionStage] = {
     QualityRejectionCategory.FACTUAL_PROBLEM: RevisionStage.RESEARCH,
@@ -97,6 +100,9 @@ class PilotProgress:
     elapsed_seconds: float | None
     technical_warnings: list[str]
     high_risk_flags: list[str]
+    technically_ready: bool
+    commercial_rights_cleared: bool
+    rights_label: str
     artifacts: dict[str, Any]
 
 
@@ -292,11 +298,7 @@ class PilotService:
             else None
         )
 
-        rights_ok = (
-            candidate.rights.rights_status == RightsStatus.VERIFIED
-            and candidate.rights.commercial_use_allowed is True
-            and candidate.rights.modification_allowed is True
-        )
+        rights_ok = is_cleared_for_commercial_publication(candidate.rights)
         stages, next_action, next_key, resource_id, blocker = self._resolve_stages(
             candidate=candidate,
             rights_ok=rights_ok,
@@ -364,7 +366,10 @@ class PilotService:
             version_counts=version_counts,
             elapsed_seconds=elapsed,
             technical_warnings=warnings,
-            high_risk_flags=flags,
+            high_risk_flags=(flags if rights_ok else ["COMMERCIAL_RIGHTS_NOT_CLEARED", *flags]),
+            technically_ready=state == PilotRunState.READY,
+            commercial_rights_cleared=rights_ok,
+            rights_label=publication_clearance_label(candidate.rights),
             artifacts={
                 "evaluations": evaluations,
                 "dossiers": dossiers,
@@ -396,6 +401,9 @@ class PilotService:
             elapsed_seconds=progress.elapsed_seconds,
             technical_warnings=progress.technical_warnings,
             high_risk_flags=progress.high_risk_flags,
+            technically_ready=progress.technically_ready,
+            commercial_rights_cleared=progress.commercial_rights_cleared,
+            rights_label=progress.rights_label,
         )
 
     @staticmethod
@@ -419,28 +427,16 @@ class PilotService:
         def blocked(key, label, reason):
             stages.append(PilotStage(key, label, "BLOCKED", reason))
 
-        if not rights_ok:
-            stages.append(
-                PilotStage(
-                    "rights",
-                    "Rights",
-                    "BLOCKED",
-                    "Commercial use and modification rights have not been verified.",
-                )
+        stages.append(
+            PilotStage(
+                "rights",
+                "Commercial rights",
+                "CLEARED" if rights_ok else "NOT_CLEARED",
+                None
+                if rights_ok
+                else "Internal processing may continue; commercial publication is not cleared.",
             )
-            for key, label in (
-                ("visual", "Visual analysis"),
-                ("research", "Research"),
-                ("script", "Script"),
-                ("narration", "Narration"),
-                ("raw", "Raw render"),
-                ("captions", "Captions"),
-                ("final", "Final video"),
-                ("quality", "Quality review"),
-            ):
-                blocked(key, label, "Verified rights are required first.")
-            return stages, "Verify rights", "rights-review", candidate.id, stages[1].blocked_reason
-        stages.append(PilotStage("rights", "Rights", "VERIFIED"))
+        )
         if candidate.status != CandidateStatus.APPROVED:
             blocked("candidate", "Candidate approval", "Candidate has not been human approved.")
             return (
@@ -544,7 +540,7 @@ class PilotService:
             final and final.status == FinalRenderStatus.REJECTED
         ):
             return PilotRunState.REJECTED
-        if not rights_ok or any(
+        if any(
             item is not None and item.status.value in ("REJECTED", "FAILED")
             for item in (dossier, script, narration, raw)
         ):

@@ -14,6 +14,7 @@ from app.schemas.domain import (
     ShortFormClipRole,
     ShortFormConceptStatus,
     SourceAnalysisStatus,
+    SourceLicensePreset,
 )
 
 
@@ -78,16 +79,34 @@ class SourceRights(Base):
     rights_status: Mapped[RightsStatus] = mapped_column(
         enum_column(RightsStatus, "source_rights_status"), default=RightsStatus.UNKNOWN
     )
+    license_preset: Mapped[SourceLicensePreset | None] = mapped_column(
+        enum_column(SourceLicensePreset, "source_license_preset"), nullable=True
+    )
     license_name: Mapped[str | None] = mapped_column(String(200))
+    license_url: Mapped[str | None] = mapped_column(Text)
+    creator: Mapped[str | None] = mapped_column(String(500))
     commercial_use_allowed: Mapped[bool | None]
     derivative_works_allowed: Mapped[bool | None]
     attribution_required: Mapped[bool | None]
+    share_alike_required: Mapped[bool | None]
     attribution_text: Mapped[str | None] = mapped_column(Text)
     evidence_reference: Mapped[str | None] = mapped_column(Text)
     reviewed_by: Mapped[str | None] = mapped_column(String(200))
     verified_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     notes: Mapped[str] = mapped_column(Text, default="")
     source: Mapped[LongFormSource] = relationship(back_populates="rights")
+
+    @property
+    def is_cleared_for_commercial_publication(self) -> bool:
+        from app.services.rights.policy import is_cleared_for_commercial_publication
+
+        return is_cleared_for_commercial_publication(self)
+
+    @property
+    def publication_clearance_label(self) -> str:
+        from app.services.rights.policy import publication_clearance_label
+
+        return publication_clearance_label(self)
 
 
 class SourceScene(Base):
