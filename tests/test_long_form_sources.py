@@ -157,13 +157,15 @@ def test_unreviewed_source_runs_local_analysis_concepts_and_preserves_provenance
     session.flush()
     root = tmp_path / "sources"
     root.mkdir()
-    frame = root / str(source.id) / "frames" / "scene-0001.jpg"
 
     class FakeDetector:
         def __init__(self, *args, **kwargs):
             pass
 
         def detect(self, source_path, duration, frame_directory):
+            frame_directory.mkdir(parents=True)
+            frame = frame_directory / "scene-0001.jpg"
+            frame.write_bytes(b"frame")
             return [DetectedScene(0, duration, frame)]
 
     monkeypatch.setattr("app.services.sources.service.FFmpegSceneDetector", FakeDetector)

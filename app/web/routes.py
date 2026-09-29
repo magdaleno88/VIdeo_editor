@@ -265,6 +265,8 @@ async def source_action(request: Request, source_id: int, action: str, session: 
             )
         elif action == "scenes":
             service.detect_scenes(source_id)
+        elif action == "redetect-scenes":
+            service.detect_scenes(source_id, force=True)
         elif action == "analyze":
             service.analyze(
                 source_id,
@@ -282,7 +284,14 @@ async def source_action(request: Request, source_id: int, action: str, session: 
             raise NotFoundError("Unknown source action")
     except (ApplicationError, ValueError) as exc:
         return _redirect(target, error=str(exc))
-    return _redirect(target, notice=f"{action.title()} completed")
+    notice = f"{action.title()} completed"
+    if action in ("scenes", "redetect-scenes"):
+        notice = {
+            "SCENES_REUSED": "Existing scenes reused",
+            "SCENES_DETECTED": "Scenes detected",
+            "SCENES_REDETECTED": "Scenes re-detected",
+        }.get(service.scene_detection_outcome, "Scene detection completed")
+    return _redirect(target, notice=notice)
 
 
 @router.post("/dashboard/concepts/{concept_id}/{decision}", name="dashboard_concept_review")

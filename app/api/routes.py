@@ -203,8 +203,8 @@ def source_continue_internal(source_id: int, body: ReviewAction, service: Source
 @router.post(
     "/sources/{source_id}/scene-detection", response_model=LongFormSourceRead, tags=["sources"]
 )
-def source_scene_detection(source_id: int, service: SourceDep):
-    return service.detect_scenes(source_id)
+def source_scene_detection(source_id: int, service: SourceDep, force: bool = False):
+    return service.detect_scenes(source_id, force=force)
 
 
 @router.post("/sources/{source_id}/transcribe", response_model=LongFormSourceRead, tags=["sources"])

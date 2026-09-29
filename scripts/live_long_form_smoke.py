@@ -106,6 +106,7 @@ def main() -> int:
         engine = build_engine(settings.database_url)
         migrate(engine)
         try:
+            scene_verification = None
             with session_scope(session_factory(engine)) as session:
                 service = LongFormSourceService(session, settings)
 
@@ -143,9 +144,28 @@ def main() -> int:
                     for item in detected.scenes
                 ):
                     raise RuntimeError("Scene detection or representative frames failed")
-                print(
-                    "LOCAL SCENE DETECTION VERIFIED: "
-                    f"scenes={len(detected.scenes)}, frames={len(detected.scenes)}"
+                first_paths = {
+                    (root / "sources" / item.representative_frame_path).resolve()
+                    for item in detected.scenes
+                }
+                redetected = service.detect_scenes(source.id, force=True)
+                second_paths = {
+                    (root / "sources" / item.representative_frame_path).resolve()
+                    for item in redetected.scenes
+                }
+                positions = [item.position for item in redetected.scenes]
+                if (
+                    len(redetected.scenes) != len(detected.scenes)
+                    or positions != list(range(len(redetected.scenes)))
+                    or first_paths & second_paths
+                ):
+                    raise RuntimeError("Atomic scene re-detection validation failed")
+                scene_verification = (
+                    source.id,
+                    len(detected.scenes),
+                    len(redetected.scenes),
+                    first_paths,
+                    second_paths,
                 )
                 service.transcribe(
                     source.id,
@@ -217,6 +237,18 @@ def main() -> int:
                     f"windows={windows}, output={metadata.width}x{metadata.height}, "
                     f"duration={metadata.duration:.2f}s"
                 )
+            source_id, first_count, second_count, first_paths, second_paths = scene_verification
+            stored_frames = {
+                item.resolve()
+                for item in (root / "sources" / str(source_id) / "frames").rglob("*.jpg")
+            }
+            if any(path.exists() for path in first_paths) or stored_frames != second_paths:
+                raise RuntimeError("Committed scene frame cleanup validation failed")
+            print(
+                "LOCAL SCENE REDETECTION VERIFIED: "
+                f"first={first_count}, second={second_count}, "
+                f"frames={len(stored_frames)}, duplicates=0, orphans=0"
+            )
         finally:
             engine.dispose()
     return 0

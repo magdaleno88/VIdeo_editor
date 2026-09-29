@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import logging
 import math
+import shutil
+import uuid
 from collections.abc import Iterable
+from contextlib import suppress
 from pathlib import Path
 
+from sqlalchemy import delete, event
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
@@ -57,6 +63,9 @@ from app.services.sources.storage import SourceStorage
 
 ANALYSIS_VERSION = "long-form-local-1.0"
 CONCEPT_VERSION = "short-form-concept-1.0"
+SCENE_DETECTOR_VERSION = "ffmpeg-scene-1.0"
+
+logger = logging.getLogger(__name__)
 
 
 class LongFormSourceService:
@@ -69,6 +78,7 @@ class LongFormSourceService:
             settings.source_upload_max_size_mb * 1024 * 1024,
             settings.ffprobe_binary,
         )
+        self.scene_detection_outcome: str | None = None
 
     def list(self) -> list[LongFormSourceRead]:
         return [LongFormSourceRead.model_validate(item) for item in self.sources.list()]
@@ -175,8 +185,13 @@ class LongFormSourceService:
         self.session.flush()
         return LongFormSourceRead.model_validate(source)
 
-    def detect_scenes(self, source_id: int) -> LongFormSourceRead:
+    def detect_scenes(self, source_id: int, *, force: bool = False) -> LongFormSourceRead:
         source = self.sources.get(source_id)
+        configuration = self._scene_configuration()
+        if not force and self._reusable_scenes(source, configuration):
+            self.scene_detection_outcome = "SCENES_REUSED"
+            logger.info("source_scenes_reused", extra={"source_id": source.id})
+            return LongFormSourceRead.model_validate(source)
         source_path = self.storage.resolve(source.relative_path)
         detector = FFmpegSceneDetector(
             self.settings.ffmpeg_binary,
@@ -185,30 +200,161 @@ class LongFormSourceService:
             merge_threshold=self.settings.scene_merge_threshold_seconds,
             max_scenes=self.settings.scene_analysis_max_scenes,
         )
-        for old in list(source.scenes):
-            self.session.delete(old)
-        frame_directory = self.storage.root / str(source.id) / "frames"
-        detected = detector.detect(source_path, source.duration_seconds, frame_directory)
+        source_directory = self.storage.root / str(source.id)
+        staging = source_directory / f".scene-detection-{uuid.uuid4().hex}"
+        try:
+            detected = detector.detect(source_path, source.duration_seconds, staging)
+            self._validate_detected_scenes(detected, source.duration_seconds, staging)
+            generation = self._finalize_scene_generation(source_directory, staging)
+        except Exception:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+
+        old_paths = [item.representative_frame_path for item in source.scenes]
+        new_rows = []
         for position, item in enumerate(detected):
-            source.scenes.append(
+            relative_frame = (generation / item.frame_path.relative_to(staging)).relative_to(
+                self.storage.root
+            )
+            new_rows.append(
                 SourceScene(
+                    source_id=source.id,
                     position=position,
                     start_seconds=item.start,
                     end_seconds=item.end,
                     duration_seconds=item.end - item.start,
-                    representative_frame_path=item.frame_path.relative_to(
-                        self.storage.root
-                    ).as_posix(),
-                    technical_metadata={
-                        "detector": "ffmpeg-scene",
-                        "threshold": self.settings.scene_threshold,
-                    },
+                    representative_frame_path=relative_frame.as_posix(),
+                    technical_metadata=configuration,
                     heuristic_score=min(100.0, 55 + (item.end - item.start)),
                 )
             )
-        source.status = LongFormSourceStatus.PREPROCESSED
-        self.session.flush()
+        try:
+            with self.session.begin_nested():
+                self.session.execute(delete(SourceScene).where(SourceScene.source_id == source.id))
+                self.session.flush()
+                self.session.add_all(new_rows)
+                source.status = LongFormSourceStatus.PREPROCESSED
+                self.session.flush()
+        except IntegrityError as exc:
+            shutil.rmtree(generation, ignore_errors=True)
+            self.session.expire(source, ["scenes"])
+            raise ConflictError(
+                "Scene replacement conflicted with another update; reload and try again"
+            ) from exc
+        except SQLAlchemyError as exc:
+            shutil.rmtree(generation, ignore_errors=True)
+            self.session.expire(source, ["scenes"])
+            raise ConflictError("Scene replacement could not be completed safely") from exc
+        except Exception:
+            shutil.rmtree(generation, ignore_errors=True)
+            self.session.expire(source, ["scenes"])
+            raise
+        self._schedule_frame_cleanup(old_paths, generation)
+        self.session.expire(source, ["scenes"])
+        self.scene_detection_outcome = "SCENES_REDETECTED" if old_paths else "SCENES_DETECTED"
+        logger.info(
+            "source_scenes_replaced",
+            extra={
+                "source_id": source.id,
+                "scene_count": len(new_rows),
+                "outcome": self.scene_detection_outcome,
+            },
+        )
         return LongFormSourceRead.model_validate(source)
+
+    def _scene_configuration(self) -> dict:
+        return {
+            "detector": "ffmpeg-scene",
+            "detector_version": SCENE_DETECTOR_VERSION,
+            "threshold": self.settings.scene_threshold,
+            "minimum_duration": self.settings.minimum_scene_duration_seconds,
+            "merge_threshold": self.settings.scene_merge_threshold_seconds,
+            "max_scenes": self.settings.scene_analysis_max_scenes,
+        }
+
+    def _reusable_scenes(self, source, configuration: dict) -> bool:
+        scenes = list(source.scenes)
+        if not scenes or [item.position for item in scenes] != list(range(len(scenes))):
+            return False
+        for item in scenes:
+            if item.technical_metadata != configuration or not item.representative_frame_path:
+                return False
+            try:
+                frame = self.storage.resolve(item.representative_frame_path)
+            except Exception:
+                return False
+            if frame.stat().st_size <= 0:
+                return False
+        return True
+
+    def _validate_detected_scenes(self, detected, duration: float, staging: Path) -> None:
+        if not detected:
+            raise ConflictError("Scene detection returned no valid scenes")
+        if len(detected) > self.settings.scene_analysis_max_scenes:
+            raise ConflictError("Scene detection exceeded the configured scene limit")
+        expected_start = 0.0
+        seen_frames: set[Path] = set()
+        staging = staging.resolve()
+        for item in detected:
+            frame = item.frame_path.resolve()
+            if (
+                item.start < 0
+                or item.end <= item.start
+                or abs(item.start - expected_start) > 0.01
+                or item.end > duration + 0.01
+                or not frame.is_relative_to(staging)
+                or frame in seen_frames
+                or not frame.is_file()
+                or frame.stat().st_size <= 0
+            ):
+                raise ConflictError("Scene detection produced an incomplete or invalid result")
+            expected_start = item.end
+            seen_frames.add(frame)
+        if abs(expected_start - duration) > 0.01:
+            raise ConflictError("Scene detection did not cover the complete source duration")
+
+    @staticmethod
+    def _finalize_scene_generation(source_directory: Path, staging: Path) -> Path:
+        frames = source_directory / "frames"
+        frames.mkdir(parents=True, exist_ok=True)
+        generation = frames / f"generation-{uuid.uuid4().hex}"
+        staging.replace(generation)
+        return generation
+
+    def _schedule_frame_cleanup(self, old_paths: list[str | None], generation: Path) -> None:
+        finished = False
+
+        def committed(session) -> None:
+            nonlocal finished
+            if finished:
+                return
+            finished = True
+            self._cleanup_old_frames(old_paths)
+
+        def rolled_back(session) -> None:
+            nonlocal finished
+            if finished:
+                return
+            finished = True
+            shutil.rmtree(generation, ignore_errors=True)
+
+        event.listen(self.session, "after_commit", committed, once=True)
+        event.listen(self.session, "after_rollback", rolled_back, once=True)
+
+    def _cleanup_old_frames(self, old_paths: list[str | None]) -> None:
+        candidates: set[Path] = set()
+        for relative in old_paths:
+            if not relative:
+                continue
+            path = (self.storage.root / relative).resolve()
+            if self.storage.root not in path.parents:
+                continue
+            path.unlink(missing_ok=True)
+            candidates.add(path.parent)
+        for directory in sorted(candidates, key=lambda item: len(item.parts), reverse=True):
+            if directory.name.startswith("generation-"):
+                with suppress(OSError):
+                    directory.rmdir()
 
     def transcribe(self, source_id: int, request: SourceTranscriptionRequest):
         source = self.sources.get(source_id)

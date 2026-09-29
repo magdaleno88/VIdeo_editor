@@ -218,6 +218,8 @@ def parser() -> argparse.ArgumentParser:
     for name in ("show", "detect-scenes", "transcribe", "analyze", "moments", "concepts"):
         action = source.add_parser(name)
         action.add_argument("id", type=int)
+        if name == "detect-scenes":
+            action.add_argument("--force", action="store_true")
         if name == "analyze":
             action.add_argument(
                 "--profile", choices=[item.value for item in AnalysisProfile], default="BALANCED"
@@ -315,7 +317,7 @@ def main(argv: list[str] | None = None) -> int:
                             ),
                         )
                     elif args.action == "detect-scenes":
-                        result = source_service.detect_scenes(args.id)
+                        result = source_service.detect_scenes(args.id, force=args.force)
                     elif args.action == "transcribe":
                         from app.schemas.domain import SourceTranscriptionRequest
 

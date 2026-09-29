@@ -70,11 +70,29 @@ def main() -> int:
                 )
                 upload.raise_for_status()
                 source_id = upload.json()["id"]
+                csrf = app.state.dashboard_csrf_token
+                detected = client.post(
+                    f"/dashboard/sources/{source_id}/actions/scenes",
+                    data={"csrf_token": csrf},
+                    follow_redirects=False,
+                )
                 detail = client.get(f"/dashboard/sources/{source_id}")
+                redetected = client.post(
+                    f"/dashboard/sources/{source_id}/actions/redetect-scenes",
+                    data={"csrf_token": csrf},
+                    follow_redirects=False,
+                )
+                refreshed = client.get(f"/dashboard/sources/{source_id}")
                 media = client.get(f"/dashboard/sources/{source_id}/media")
                 if (
                     listing.status_code != 200
+                    or detected.status_code != 303
                     or detail.status_code != 200
+                    or "Scenes detected:" not in detail.text
+                    or "Re-detect Scenes" not in detail.text
+                    or redetected.status_code != 303
+                    or "Scenes+re-detected" not in redetected.headers["location"]
+                    or refreshed.status_code != 200
                     or "Source player" not in detail.text
                     or "Timeline" not in detail.text
                     or media.status_code != 200
@@ -83,7 +101,7 @@ def main() -> int:
                     raise RuntimeError("Dashboard source workflow failed")
                 print(
                     "LOCAL LONG-FORM DASHBOARD VERIFIED: "
-                    f"source={source_id}, list/detail/player/timeline available"
+                    f"source={source_id}, list/detail/player/timeline and re-detection available"
                 )
         finally:
             engine.dispose()
