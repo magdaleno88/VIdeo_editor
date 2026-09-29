@@ -36,7 +36,9 @@ from app.repositories.renders import RenderRepository
 from app.repositories.research import ResearchRepository
 from app.repositories.scripts import ScriptRepository
 from app.schemas.domain import (
+    AnalysisProfile,
     CaptionPlanRequest,
+    ConceptGenerationRequest,
     DiscoveryRequest,
     FinalRenderQualityReviewRequest,
     FinalRenderReviewRequest,
@@ -53,6 +55,8 @@ from app.schemas.domain import (
     RightsStatus,
     ScriptGenerationRequest,
     ScriptReviewRequest,
+    SourceAnalysisRequest,
+    SourceRightsReview,
 )
 from app.services.captions.runtime import caption_plan_service
 from app.services.captions.service import FinalRenderReviewService
@@ -66,6 +70,7 @@ from app.services.research.service import ResearchReviewService
 from app.services.review import ReviewService
 from app.services.scoring.scorers import HeuristicVideoScorer
 from app.services.scripting.service import ScriptReviewService
+from app.services.sources.service import LongFormSourceService
 from app.web.security import form_data, resolve_persisted_file, safe_redirect, verify_csrf
 from app.web.service import DashboardService
 
@@ -98,6 +103,145 @@ def home(request: Request, session: SessionDep):
         name="home.html",
         context=_context(request, **DashboardService(session).home()),
     )
+
+
+@router.get("/dashboard/sources", response_class=HTMLResponse, name="dashboard_sources")
+def sources_dashboard(request: Request, session: SessionDep):
+    service = LongFormSourceService(session, request.app.state.settings)
+    return templates.TemplateResponse(
+        request=request,
+        name="sources.html",
+        context=_context(request, sources=service.sources.list()),
+    )
+
+
+@router.get("/dashboard/concepts", response_class=HTMLResponse, name="dashboard_concepts")
+def concepts_dashboard(request: Request, session: SessionDep):
+    service = LongFormSourceService(session, request.app.state.settings)
+    concepts = [concept for source in service.sources.list() for concept in source.concepts]
+    return templates.TemplateResponse(
+        request=request,
+        name="concepts.html",
+        context=_context(
+            request, concepts=sorted(concepts, key=lambda item: item.id, reverse=True)
+        ),
+    )
+
+
+@router.get("/dashboard/sources/{source_id}", response_class=HTMLResponse, name="dashboard_source")
+def source_dashboard(request: Request, source_id: int, session: SessionDep):
+    service = LongFormSourceService(session, request.app.state.settings)
+    source = service.sources.get(source_id)
+    return templates.TemplateResponse(
+        request=request,
+        name="source_detail.html",
+        context=_context(
+            request,
+            source=source,
+            analysis_budget=service._budget(source, AnalysisProfile.BALANCED),
+        ),
+    )
+
+
+@router.get("/dashboard/sources/{source_id}/media", name="dashboard_source_media")
+def source_media(request: Request, source_id: int, session: SessionDep):
+    service = LongFormSourceService(session, request.app.state.settings)
+    source = service.sources.get(source_id)
+    return FileResponse(
+        service.storage.resolve(source.relative_path), filename=source.original_filename
+    )
+
+
+@router.get("/dashboard/sources/{source_id}/frames/{scene_id}", name="dashboard_source_frame")
+def source_frame(request: Request, source_id: int, scene_id: int, session: SessionDep):
+    service = LongFormSourceService(session, request.app.state.settings)
+    source = service.sources.get(source_id)
+    scene = next((item for item in source.scenes if item.id == scene_id), None)
+    if scene is None or not scene.representative_frame_path:
+        raise NotFoundError("Representative frame was not found")
+    return FileResponse(
+        service.storage.resolve(scene.representative_frame_path), media_type="image/jpeg"
+    )
+
+
+@router.get(
+    "/dashboard/concepts/{concept_id}", response_class=HTMLResponse, name="dashboard_concept"
+)
+def concept_dashboard(request: Request, concept_id: int, session: SessionDep):
+    service = LongFormSourceService(session, request.app.state.settings)
+    concept = service.sources.get_concept(concept_id)
+    source = service.sources.get(concept.source_id)
+    return templates.TemplateResponse(
+        request=request,
+        name="concept_detail.html",
+        context=_context(request, source=source, concept=concept),
+    )
+
+
+@router.post("/dashboard/sources/{source_id}/actions/{action}", name="dashboard_source_action")
+async def source_action(request: Request, source_id: int, action: str, session: SessionDep):
+    values = await form_data(request)
+    verify_csrf(request, values)
+    service = LongFormSourceService(session, request.app.state.settings)
+    target = f"/dashboard/sources/{source_id}"
+    try:
+        if action == "rights":
+            service.review_rights(
+                source_id,
+                SourceRightsReview(
+                    rights_status=RightsStatus.VERIFIED,
+                    license_name=values.get("license_name"),
+                    commercial_use_allowed=values.get("commercial_use_allowed") == "true",
+                    derivative_works_allowed=values.get("derivative_works_allowed") == "true",
+                    attribution_required=values.get("attribution_required") == "true",
+                    attribution_text=values.get("attribution_text") or None,
+                    evidence_reference=values.get("evidence_reference"),
+                    reviewer=values.get("reviewer")
+                    or request.app.state.settings.dashboard_default_reviewer,
+                    notes=values.get("notes", ""),
+                ),
+            )
+        elif action == "scenes":
+            service.detect_scenes(source_id)
+        elif action == "analyze":
+            service.analyze(
+                source_id,
+                SourceAnalysisRequest(
+                    profile=AnalysisProfile(values.get("profile", "BALANCED")),
+                    use_external_ai=values.get("use_external_ai") == "true",
+                ),
+            )
+        elif action == "concepts":
+            service.generate_concepts(
+                source_id,
+                ConceptGenerationRequest(count=int(values.get("count", "3"))),
+            )
+        else:
+            raise NotFoundError("Unknown source action")
+    except (ApplicationError, ValueError) as exc:
+        return _redirect(target, error=str(exc))
+    return _redirect(target, notice=f"{action.title()} completed")
+
+
+@router.post("/dashboard/concepts/{concept_id}/{decision}", name="dashboard_concept_review")
+async def concept_review(request: Request, concept_id: int, decision: str, session: SessionDep):
+    values = await form_data(request)
+    verify_csrf(request, values)
+    service = LongFormSourceService(session, request.app.state.settings)
+    action = ReviewAction(
+        reviewer=values.get("reviewer") or request.app.state.settings.dashboard_default_reviewer,
+        notes=values.get("notes") or f"Concept {decision} in local dashboard",
+    )
+    try:
+        if decision == "approve":
+            service.approve_concept(concept_id, action)
+        elif decision == "reject":
+            service.reject_concept(concept_id, action)
+        else:
+            raise NotFoundError("Unknown concept decision")
+    except ApplicationError as exc:
+        return _redirect(f"/dashboard/concepts/{concept_id}", error=str(exc))
+    return _redirect(f"/dashboard/concepts/{concept_id}", notice=f"Concept {decision}d")
 
 
 @router.get("/dashboard/pilots", response_class=HTMLResponse, name="dashboard_pilots")

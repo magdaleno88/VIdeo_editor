@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Reel concepts · Industrial Content Factory{% endblock %}
+{% block content %}
+<section class="page-head"><div><p class="eyebrow">Long-form extraction</p><h1>Reel concepts</h1><p>Review proposed stories before they enter Research, Script, TTS, Render and Captions.</p></div></section>
+<section class="panel"><div class="cards">{% for concept in concepts %}<a class="card" href="/dashboard/concepts/{{ concept.id }}"><strong>{{ concept.title }}</strong><span>{{ concept.status.value }} · {{ concept.target_duration }}s</span><small>{{ concept.hook_candidate }}</small>{% if concept.candidate_id %}<small>Pipeline candidate #{{ concept.candidate_id }}</small>{% endif %}</a>{% else %}<p class="muted">No Reel concepts yet. Start from a long-form source.</p>{% endfor %}</div></section>
+{% endblock %}

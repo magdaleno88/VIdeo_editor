@@ -32,6 +32,18 @@ from app.models.candidate import (
     VideoEditPlan,
     VoiceProfile,
 )
+from app.models.source import (
+    InterestingMoment,
+    LongFormSource,
+    ProcessStage,
+    ShortFormClip,
+    ShortFormConcept,
+    SourceAnalysis,
+    SourceRights,
+    SourceScene,
+    SourceTranscript,
+    SourceTranscriptSegment,
+)
 
 __all__ = [
     "CandidateEvent",
@@ -66,4 +78,14 @@ __all__ = [
     "VideoCandidate",
     "VideoEditPlan",
     "VoiceProfile",
+    "InterestingMoment",
+    "LongFormSource",
+    "ProcessStage",
+    "ShortFormClip",
+    "ShortFormConcept",
+    "SourceAnalysis",
+    "SourceRights",
+    "SourceScene",
+    "SourceTranscript",
+    "SourceTranscriptSegment",
 ]

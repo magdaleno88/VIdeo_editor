@@ -4,6 +4,18 @@
 
 This is a modular monolith: a single application with clearly separated boundaries, not distributed services. API and CLI share `DiscoveryService`, `ReviewService`, repositories and rights policy. Synchronous HTTP/SQLAlchemy keeps the first version small; FastAPI executes sync endpoints in its thread pool.
 
+The primary architecture is now:
+
+```text
+LongFormSource → SourceRights → scenes/transcript → SourceAnalysis
+→ ProcessStage/InterestingMoment → ShortFormConcept/ordered clips
+→ existing Candidate → Research → Script → TTS → Render → Captions → Review
+```
+
+`LongFormSourceService` owns safe persistent ingest, checksum reuse, local preprocessing, structural analysis, concept extraction and source-level rights inheritance. It creates an ordinary approved `VideoCandidate` only when a human approves a concept. The candidate carries a structural visual evaluation, so all later phases use their established repositories and gates. A final asset remains traceable through candidate → concept → source → source rights evidence.
+
+The old stock path remains operational as `Pexels/Pixabay → VideoCandidate → existing pipeline`. It is supplemental discovery and B-roll input rather than the product's main entry point.
+
 `VideoSourceProvider` normalizes catalog differences. `QueryGenerator`, `VideoScorer` and `VideoAnalysisProvider` are interchangeable contracts. `AIVideoScorer` depends on the analysis contract rather than Gemini classes; the Google SDK is isolated in `GeminiVideoAnalysisProvider`. `VideoAssetFetcher` is a separate, candidate-bound adapter for short-lived preview bytes. HTTP clients have timeouts and explicit lifetimes.
 
 AI scoring is synchronous and explicit. It first checks for a successful evaluation with the same candidate, AI provider, model, prompt version and scorer version. A cache hit performs no download or paid model call unless `force=true`. Discovery never invokes AI scoring. The current implementation sends the video directly to Gemini, so Phase 2 adds no FFmpeg or frame-extraction dependency.

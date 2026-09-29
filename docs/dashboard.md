@@ -25,6 +25,8 @@ Open `http://127.0.0.1:8000/`. Keep the server bound to loopback. The dashboard 
 - State-changing forms invoke the current review, generation, planning and rendering services.
 - Page loads never run discovery, external models, TTS or FFmpeg.
 
+The main navigation now starts with **Sources**, followed by **Reel concepts** and **Candidates / Stock**. `/dashboard/sources` uploads persistent local sources through the streamed REST ingest boundary. Source detail provides the native player, rights review, metadata, transcript status, detected scenes, a clickable stage/moment timeline and derived concepts. `/dashboard/concepts/{id}` previews ordered windows, permits bounded timestamp/order changes, and records approval or rejection. External source analysis remains a separate explicit button.
+
 The main routes are:
 
 | Route | Purpose |

@@ -33,6 +33,31 @@ class UnsupportedMediaError(ApplicationError):
 class AnalysisError(ApplicationError):
     status_code = 502
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        stage: str | None = None,
+        http_status: int | None = None,
+        provider_status: str | None = None,
+        provider_message: str | None = None,
+        model: str | None = None,
+        mime_type: str | None = None,
+        size_bytes: int | None = None,
+        duration_seconds: float | None = None,
+        input_method: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.stage = stage
+        self.http_status = http_status
+        self.provider_status = provider_status
+        self.provider_message = provider_message
+        self.model = model
+        self.mime_type = mime_type
+        self.size_bytes = size_bytes
+        self.duration_seconds = duration_seconds
+        self.input_method = input_method
+
 
 class AnalysisTimeoutError(AnalysisError):
     status_code = 504

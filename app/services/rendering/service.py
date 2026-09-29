@@ -55,6 +55,7 @@ class EditPlanService:
         max_speed: float,
         pre_roll_ms: int,
         post_roll_ms: int,
+        source_ambient_audio_enabled: bool = False,
     ) -> None:
         self.session = session
         self.candidates = candidates
@@ -68,6 +69,7 @@ class EditPlanService:
         self.max_speed = max_speed
         self.pre_roll = pre_roll_ms / 1000
         self.post_roll = post_roll_ms / 1000
+        self.source_ambient_audio_enabled = source_ambient_audio_enabled
 
     def create(self, candidate_id: int, request: RenderPlanRequest):
         candidate, script, narration = self._prerequisites(
@@ -117,8 +119,18 @@ class EditPlanService:
             target_duration=narration.duration_seconds,
             actual_narration_duration=narration.duration_seconds,
             composition=request.composition,
-            source_audio_policy=SourceAudioPolicy.MUTED,
-            audio_configuration={"narration_id": narration.id, "source_audio": "MUTED"},
+            source_audio_policy=(
+                SourceAudioPolicy.AMBIENT_REDUCED
+                if self.source_ambient_audio_enabled
+                else SourceAudioPolicy.MUTED
+            ),
+            audio_configuration={
+                "narration_id": narration.id,
+                "source_audio": (
+                    "AMBIENT_REDUCED" if self.source_ambient_audio_enabled else "MUTED"
+                ),
+                "source_volume": 0.12 if self.source_ambient_audio_enabled else 0,
+            },
             render_configuration=settings,
             planner_version=PLANNER_VERSION,
             warnings=warnings,
@@ -370,6 +382,7 @@ class RenderService:
             )
         )
         paths = self.storage.prepare(candidate.id, asset.id)
+        runtime_warnings: list[str] = []
         try:
             narration_path = self.narration_files.resolve(narration.storage_path)
             with self.fetcher.fetch(candidate) as source:
@@ -378,7 +391,19 @@ class RenderService:
                 narration_metadata = self.renderer.probe(narration_path)
                 if not narration_metadata.has_audio:
                     raise RenderValidationError("Approved narration file has no audio stream")
-                self.renderer.render(source.path, narration_path, paths.temporary, plan)
+                original_audio_policy = plan.source_audio_policy
+                if (
+                    original_audio_policy == SourceAudioPolicy.AMBIENT_REDUCED
+                    and not source_metadata.has_audio
+                ):
+                    plan.source_audio_policy = SourceAudioPolicy.MUTED
+                    runtime_warnings.append(
+                        "Source ambience was skipped because the source has no audio stream"
+                    )
+                try:
+                    self.renderer.render(source.path, narration_path, paths.temporary, plan)
+                finally:
+                    plan.source_audio_policy = original_audio_policy
             metadata = self.renderer.probe(paths.temporary)
             self._validate_output(metadata, plan)
             size = paths.temporary.stat().st_size
@@ -387,7 +412,7 @@ class RenderService:
             checksum = sha256_file(paths.temporary)
             self.storage.finalize(paths)
             difference = metadata.duration - plan.target_duration
-            warnings = list(plan.warnings)
+            warnings = [*plan.warnings, *runtime_warnings]
             status = RenderStatus.VALIDATED
             if abs(difference) / plan.target_duration > self.duration_tolerance:
                 warnings.append("Rendered duration is outside the configured tolerance")

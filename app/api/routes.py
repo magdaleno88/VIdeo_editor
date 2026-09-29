@@ -1,3 +1,5 @@
+import tempfile
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -24,6 +26,7 @@ from app.api.dependencies import (
     get_review,
     get_script_review,
     get_script_service,
+    get_source_service,
 )
 from app.core.errors import ConfigurationError, ConflictError
 from app.core.schema import check_schema
@@ -36,6 +39,8 @@ from app.schemas.domain import (
     CandidateRead,
     CaptionPlanRead,
     CaptionPlanRequest,
+    ConceptClipPatch,
+    ConceptGenerationRequest,
     DiscoveryRequest,
     DiscoveryResult,
     EvaluationRead,
@@ -47,6 +52,7 @@ from app.schemas.domain import (
     FinalRenderResponse,
     FinalRenderReviewRequest,
     Idea,
+    LongFormSourceRead,
     ManualScoreRequest,
     NarrationAssetRead,
     NarrationRequest,
@@ -74,6 +80,10 @@ from app.schemas.domain import (
     ScriptGenerationRequest,
     ScriptGenerationResponse,
     ScriptReviewRequest,
+    ShortFormConceptRead,
+    SourceAnalysisRequest,
+    SourceRightsReview,
+    SourceTranscriptionRequest,
     VideoEditPlanRead,
 )
 from app.services.captions.service import (
@@ -90,6 +100,7 @@ from app.services.research.service import ResearchReviewService, TechnicalResear
 from app.services.review import ReviewService
 from app.services.scoring.ai import AIVideoScorer
 from app.services.scripting.service import ScriptGenerationService, ScriptReviewService
+from app.services.sources.service import LongFormSourceService
 
 router = APIRouter()
 ReviewDep = Annotated[ReviewService, Depends(get_review)]
@@ -108,6 +119,7 @@ FinalRenderDep = Annotated[FinalRenderService, Depends(get_final_render_service,
 FinalRenderReviewDep = Annotated[FinalRenderReviewService, Depends(get_final_render_review)]
 PilotDep = Annotated[PilotService, Depends(get_pilot_service)]
 QualityReviewDep = Annotated[QualityReviewService, Depends(get_quality_review)]
+SourceDep = Annotated[LongFormSourceService, Depends(get_source_service)]
 
 
 @router.get("/health", tags=["operations"])
@@ -121,6 +133,121 @@ def health(request: Request):
             status_code=503, content={"status": "unhealthy", "database": "unavailable"}
         )
     return {"status": "ok", "database": "ok", "version": "0.1.0"}
+
+
+@router.post("/sources/upload", response_model=LongFormSourceRead, tags=["sources"])
+async def upload_source(request: Request, service: SourceDep) -> LongFormSourceRead:
+    filename = request.headers.get("x-filename", "source.mp4")
+    incoming = service.storage.incoming
+    path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=incoming, suffix=".upload", delete=False) as handle:
+            path = Path(handle.name)
+            total = 0
+            async for chunk in request.stream():
+                total += len(chunk)
+                if total > service.storage.max_size_bytes:
+                    from app.core.errors import AssetTooLargeError
+
+                    raise AssetTooLargeError("Source exceeds the configured upload limit")
+                handle.write(chunk)
+
+        def chunks():
+            with path.open("rb") as uploaded:
+                while chunk := uploaded.read(1024 * 1024):
+                    yield chunk
+
+        source, _ = service.ingest(chunks(), filename, title=request.headers.get("x-title"))
+        return source
+    finally:
+        if path is not None:
+            path.unlink(missing_ok=True)
+
+
+@router.get("/sources", response_model=list[LongFormSourceRead], tags=["sources"])
+def sources(service: SourceDep) -> list[LongFormSourceRead]:
+    return service.list()
+
+
+@router.get("/sources/{source_id}", response_model=LongFormSourceRead, tags=["sources"])
+def source(source_id: int, service: SourceDep) -> LongFormSourceRead:
+    return service.get(source_id)
+
+
+@router.post("/sources/{source_id}/rights", response_model=LongFormSourceRead, tags=["sources"])
+def source_rights(source_id: int, body: SourceRightsReview, service: SourceDep):
+    return service.review_rights(source_id, body)
+
+
+@router.post(
+    "/sources/{source_id}/scene-detection", response_model=LongFormSourceRead, tags=["sources"]
+)
+def source_scene_detection(source_id: int, service: SourceDep):
+    return service.detect_scenes(source_id)
+
+
+@router.post("/sources/{source_id}/transcribe", response_model=LongFormSourceRead, tags=["sources"])
+def source_transcribe(source_id: int, body: SourceTranscriptionRequest, service: SourceDep):
+    return service.transcribe(source_id, body)
+
+
+@router.post("/sources/{source_id}/analyze", response_model=LongFormSourceRead, tags=["sources"])
+def source_analyze(source_id: int, body: SourceAnalysisRequest, service: SourceDep):
+    return service.analyze(source_id, body)
+
+
+@router.post(
+    "/sources/{source_id}/concepts", response_model=list[ShortFormConceptRead], tags=["sources"]
+)
+def source_concepts(source_id: int, body: ConceptGenerationRequest, service: SourceDep):
+    return service.generate_concepts(source_id, body)
+
+
+@router.get(
+    "/sources/{source_id}/concepts", response_model=list[ShortFormConceptRead], tags=["sources"]
+)
+def list_source_concepts(source_id: int, service: SourceDep):
+    return [
+        ShortFormConceptRead.model_validate(item) for item in service.sources.concepts(source_id)
+    ]
+
+
+@router.get("/sources/{source_id}/stages", tags=["sources"])
+def source_stages(source_id: int, service: SourceDep):
+    analysis = service.sources.latest_analysis(source_id)
+    return [] if analysis is None else analysis.stages
+
+
+@router.get("/sources/{source_id}/moments", tags=["sources"])
+def source_moments(source_id: int, service: SourceDep):
+    analysis = service.sources.latest_analysis(source_id)
+    return [] if analysis is None else analysis.moments
+
+
+@router.get("/concepts/{concept_id}", response_model=ShortFormConceptRead, tags=["concepts"])
+def concept(concept_id: int, service: SourceDep):
+    return service.get_concept(concept_id)
+
+
+@router.patch(
+    "/concepts/{concept_id}/clips", response_model=ShortFormConceptRead, tags=["concepts"]
+)
+def update_concept_clips(concept_id: int, body: ConceptClipPatch, service: SourceDep):
+    return service.patch_clips(concept_id, body)
+
+
+@router.post(
+    "/concepts/{concept_id}/approve", response_model=ShortFormConceptRead, tags=["concepts"]
+)
+def approve_concept(concept_id: int, body: ReviewAction, service: SourceDep):
+    return service.approve_concept(concept_id, body)
+
+
+@router.post(
+    "/concepts/{concept_id}/reject", response_model=ShortFormConceptRead, tags=["concepts"]
+)
+def reject_concept(concept_id: int, body: ReviewAction, service: SourceDep):
+    return service.reject_concept(concept_id, body)
 
 
 @router.post("/discovery/queries", response_model=list[str], tags=["discovery"])

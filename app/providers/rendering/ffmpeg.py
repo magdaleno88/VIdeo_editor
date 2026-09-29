@@ -12,7 +12,7 @@ from app.core.errors import (
 )
 from app.models import VideoEditPlan
 from app.providers.rendering.base import MediaMetadata, RenderExecution
-from app.schemas.domain import CompositionStrategy
+from app.schemas.domain import CompositionStrategy, SourceAudioPolicy
 
 
 def resolve_binary(configured: str, default: str) -> str:
@@ -54,10 +54,14 @@ def parse_probe(payload: dict) -> MediaMetadata:
     for item in side_data:
         if "rotation" in item:
             rotation = int(item["rotation"])
+    width = int(video["width"]) if video and video.get("width") else None
+    height = int(video["height"]) if video and video.get("height") else None
+    if width and height and abs(rotation) % 180 == 90:
+        width, height = height, width
     return MediaMetadata(
         duration=duration,
-        width=int(video["width"]) if video and video.get("width") else None,
-        height=int(video["height"]) if video and video.get("height") else None,
+        width=width,
+        height=height,
         fps=fps,
         video_codec=video.get("codec_name") if video else None,
         audio_codec=audio.get("codec_name") if audio else None,
@@ -78,7 +82,7 @@ class FFmpegCommandBuilder:
 
     @staticmethod
     def _compose(label: str, output: str, strategy, width: int, height: int) -> list[str]:
-        if strategy == CompositionStrategy.CENTER_CROP:
+        if strategy in (CompositionStrategy.CENTER_CROP, CompositionStrategy.ROI_AWARE):
             return [
                 f"[{label}]scale={width}:{height}:force_original_aspect_ratio=increase,"
                 f"crop={width}:{height}[{output}]"
@@ -102,6 +106,7 @@ class FFmpegCommandBuilder:
     def build(self, source: Path, narration: Path, output: Path, plan: VideoEditPlan) -> list[str]:
         filters: list[str] = []
         labels: list[str] = []
+        audio_labels: list[str] = []
         sequence = 0
         for segment in plan.segments:
             for repeat in range(segment.loop_count):
@@ -121,10 +126,26 @@ class FFmpegCommandBuilder:
                     suffix += f",tpad=stop_mode=clone:stop_duration={segment.hold_seconds:.6f}"
                 filters.append(f"[{composed}]{suffix}[{final}]")
                 labels.append(f"[{final}]")
+                if (
+                    getattr(plan, "source_audio_policy", SourceAudioPolicy.MUTED)
+                    == SourceAudioPolicy.AMBIENT_REDUCED
+                ):
+                    audio = f"a{sequence}"
+                    filters.append(
+                        f"[0:a]atrim=start={segment.source_start:.6f}:"
+                        f"end={segment.source_end:.6f},asetpts=PTS-STARTPTS,"
+                        f"atempo={segment.playback_speed:.6f},volume=0.12[{audio}]"
+                    )
+                    audio_labels.append(f"[{audio}]")
                 sequence += 1
         if not labels:
             raise RenderConfigurationError("Edit plan contains no segments")
         filters.append(f"{''.join(labels)}concat=n={len(labels)}:v=1:a=0[outv]")
+        audio_map = "1:a:0"
+        if audio_labels:
+            filters.append(f"{''.join(audio_labels)}concat=n={len(audio_labels)}:v=0:a=1[sourcea]")
+            filters.append("[sourcea][1:a]amix=inputs=2:duration=first:normalize=0[outa]")
+            audio_map = "[outa]"
         return [
             self.binary,
             "-hide_banner",
@@ -140,7 +161,7 @@ class FFmpegCommandBuilder:
             "-map",
             "[outv]",
             "-map",
-            "1:a:0",
+            audio_map,
             "-t",
             f"{plan.target_duration:.6f}",
             "-c:v",

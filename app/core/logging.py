@@ -19,6 +19,16 @@ class JsonFormatter(logging.Formatter):
             "duplicates",
             "request_id",
             "error_type",
+            "request_stage",
+            "http_status",
+            "gemini_status",
+            "gemini_message",
+            "configured_model",
+            "video_mime",
+            "video_size_bytes",
+            "video_duration_seconds",
+            "video_extension",
+            "input_method",
         ):
             if hasattr(record, key):
                 event[key] = getattr(record, key)

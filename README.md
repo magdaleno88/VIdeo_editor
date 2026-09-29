@@ -1,9 +1,15 @@
 # Industrial Content Factory
 
-A local, semi-automated system for discovering industrial-process videos and building human-reviewed educational short-form content. Phases 1–8B implement **discovery, rights review, scoring, AI visual analysis, claim-centric research, traceable scripts, approved narration, deterministic vertical-video assembly, captions, graphics, a local operational dashboard and controlled pilot-batch validation**. It does not publish or remove watermarks from videos.
+A local, semi-automated **long-form → short-form industrial content factory**. The primary workflow safely ingests a licensed long industrial video, maps scenes and process stages, identifies moments, proposes several human-reviewed Reel concepts, and sends each approved concept through the existing Research → Script → TTS → FFmpeg → Captions → Review pipeline. Pexels and Pixabay remain available as supplemental stock discovery. The application does not publish, bypass access controls, remove watermarks or treat a public URL as permission.
 
 ## Features
 
+- Persistently ingest MP4, MOV, MKV and WebM sources with streaming size limits, SHA-256 deduplication, atomic storage, path confinement and real ffprobe validation.
+- Review commercial and derivative rights once at source level, then preserve that evidence through every concept, derived candidate, clip window and final Reel.
+- Detect and merge scenes locally with FFmpeg, extract bounded representative frames, preserve timestamped transcript structure and continue visually when no audio exists.
+- Build a hierarchical, budgeted source map with process stages and ranked interesting moments before any explicit external AI action.
+- Generate three to five distinct Reel concepts per source, inspect overlap warnings, reorder or trim source windows, and approve or reject concepts before paid downstream work.
+- Render multiple non-contiguous source windows in story order while keeping source timestamps separate from the output timeline.
 - Generate bounded English queries from an object/process idea using deterministic templates and an extensible Spanish/English vocabulary.
 - Search Pexels and Pixabay through official APIs and normalize source, creator, previews, dimensions and catalog license information.
 - Store candidates in SQLite with Alembic migrations and database-enforced `(provider, provider_video_id)` uniqueness.
@@ -27,7 +33,13 @@ A local, semi-automated system for discovering industrial-process videos and bui
 
 ```mermaid
 flowchart LR
-    API[FastAPI / CLI] --> Discovery[DiscoveryService]
+    API[Dashboard / FastAPI / CLI] --> Sources[LongFormSourceService]
+    Sources --> Rights[Source rights]
+    Sources --> Scenes[FFmpeg scenes + frames]
+    Sources --> Structure[Stages + moments]
+    Structure --> Concepts[ShortFormConcept + ordered windows]
+    Concepts --> Repository[Existing candidate pipeline]
+    API --> Discovery[Supplemental stock discovery]
     Discovery --> Queries[QueryGenerator]
     Discovery --> Providers[Pexels / Pixabay adapters]
     Discovery --> Cache[24-hour search cache]
@@ -58,12 +70,12 @@ flowchart LR
     Final --> Repository
     Dashboard[Local Jinja2 dashboard] --> API
     Dashboard --> Media[ID-based safe media routes]
-    Review --> Rights[Rights policy]
+    Review --> CandidateRights[Candidate rights policy]
     Review --> Repository
     Repository --> DB[(SQLite / PostgreSQL-ready schema)]
 ```
 
-See [full pipeline architecture](docs/architecture.md), [provider integration notes](docs/providers.md), [scoring semantics](docs/scoring.md), [technical research](docs/research.md), [verified scripting](docs/scripting.md), [narration](docs/tts.md), [rendering](docs/rendering.md), [captions and graphics](docs/captions.md), [dashboard operation](docs/dashboard.md), [pilot workflow](docs/pilot-workflow.md), and [the ten-phase roadmap](docs/roadmap.md).
+See [full pipeline architecture](docs/architecture.md), [long-form sources](docs/long-form-sources.md), [short-form extraction](docs/short-form-extraction.md), [provider integration notes](docs/providers.md), [scoring semantics](docs/scoring.md), [technical research](docs/research.md), [verified scripting](docs/scripting.md), [narration](docs/tts.md), [rendering](docs/rendering.md), [captions and graphics](docs/captions.md), [dashboard operation](docs/dashboard.md), [pilot workflow](docs/pilot-workflow.md), and [the roadmap](docs/roadmap.md).
 
 ## Installation
 
@@ -110,6 +122,13 @@ Edit `.env` locally. Never commit real credentials.
 | `AI_VIDEO_MAX_DURATION_SECONDS` | `90`; rejects longer candidates before download |
 | `AI_VIDEO_MAX_FILE_SIZE_MB` | `40`; enforced from headers and streamed bytes |
 | `AI_VIDEO_ANALYSIS_TIMEOUT_SECONDS` | `180`; upper bound for Gemini file processing |
+| `SOURCE_STORAGE_ROOT` | `data/sources`; persistent long-form originals and representative frames |
+| `SOURCE_UPLOAD_MAX_SIZE_MB` | `4096`; streamed upload ceiling, independent from the short-preview limit |
+| `LOCAL_SOURCE_IMPORT_ROOT` | Empty; filesystem imports are disabled until a confined root is configured |
+| `SCENE_THRESHOLD` / `MINIMUM_SCENE_DURATION_SECONDS` | `0.30` / `2`; local cut sensitivity and micro-scene control |
+| `COARSE_FRAME_BUDGET` / `DEEP_ANALYSIS_MAX_MOMENTS` | `80` / `12`; hierarchical analysis budgets |
+| `MAX_CONCEPTS_PER_SOURCE` | `5`; prevents unbounded concept generation |
+| `SOURCE_AMBIENT_AUDIO_ENABLED` | `false`; TTS stays primary unless reduced source ambience is explicitly enabled |
 | `BRAVE_SEARCH_API_KEY` | Empty; required only for explicit technical research |
 | `RESEARCH_SEARCH_PROVIDER` | `brave`; provider identity stored with each dossier |
 | `GEMINI_RESEARCH_MODEL` | Empty; required for research and deliberately not hardcoded |

@@ -24,12 +24,14 @@ from app.repositories.renders import RenderRepository
 from app.repositories.research import ResearchRepository
 from app.repositories.scripts import ScriptRepository
 from app.schemas.domain import (
+    AnalysisProfile,
     CandidateFilters,
     CandidatePage,
     CandidateRead,
     CandidateStatus,
     CaptionPlanRequest,
     CompositionStrategy,
+    ConceptGenerationRequest,
     DiscoveryRequest,
     EvaluationRead,
     EventRead,
@@ -44,9 +46,12 @@ from app.schemas.domain import (
     ResearchReview,
     ReviewAction,
     RightsReview,
+    RightsStatus,
     ScriptGenerationRequest,
     ScriptReviewRequest,
     ScriptStyle,
+    SourceAnalysisRequest,
+    SourceRightsReview,
     VoiceSettings,
 )
 from app.services.captions.runtime import caption_plan_service, configured_final_render_service
@@ -64,6 +69,7 @@ from app.services.scoring.ai import AIVideoScorer
 from app.services.scoring.scorers import HeuristicVideoScorer
 from app.services.scripting.runtime import configured_script_service
 from app.services.scripting.service import ScriptReviewService
+from app.services.sources.service import LongFormSourceService
 from app.services.video.assets import VideoAssetFetcher
 
 
@@ -204,6 +210,34 @@ def parser() -> argparse.ArgumentParser:
         if name in ("approve", "reject"):
             action.add_argument("--reviewer", required=True)
             action.add_argument("--notes", required=True)
+    source = commands.add_parser("source").add_subparsers(dest="action", required=True)
+    source_import = source.add_parser("import")
+    source_import.add_argument("path")
+    source_import.add_argument("--title")
+    source.add_parser("list")
+    for name in ("show", "detect-scenes", "transcribe", "analyze", "moments", "concepts"):
+        action = source.add_parser(name)
+        action.add_argument("id", type=int)
+        if name == "analyze":
+            action.add_argument(
+                "--profile", choices=[item.value for item in AnalysisProfile], default="BALANCED"
+            )
+            action.add_argument("--external-ai", action="store_true")
+        if name == "concepts":
+            action.add_argument("--count", type=int, choices=range(1, 6), default=3)
+    source_rights = source.add_parser("rights-review")
+    source_rights.add_argument("id", type=int)
+    source_rights.add_argument("--license", required=True)
+    source_rights.add_argument("--evidence", required=True)
+    source_rights.add_argument("--reviewer", required=True)
+    source_rights.add_argument("--notes", default="")
+    concept = commands.add_parser("concept").add_subparsers(dest="action", required=True)
+    for name in ("show", "approve", "reject"):
+        action = concept.add_parser(name)
+        action.add_argument("id", type=int)
+        if name in ("approve", "reject"):
+            action.add_argument("--reviewer", required=True)
+            action.add_argument("--notes", required=True)
     return root
 
 
@@ -258,7 +292,72 @@ def main(argv: list[str] | None = None) -> int:
             with session_scope(session_factory(engine)) as session:
                 repository = CandidateRepository(session)
                 service = ReviewService(repository, settings.scoring_weights)
-                if args.command == "discover":
+                if args.command == "source":
+                    source_service = LongFormSourceService(session, settings)
+                    if args.action == "import":
+                        result, _ = source_service.import_local(args.path, title=args.title)
+                    elif args.action == "list":
+                        result = [item.model_dump(mode="json") for item in source_service.list()]
+                    elif args.action == "show":
+                        result = source_service.get(args.id)
+                    elif args.action == "rights-review":
+                        result = source_service.review_rights(
+                            args.id,
+                            SourceRightsReview(
+                                rights_status=RightsStatus.VERIFIED,
+                                license_name=args.license,
+                                commercial_use_allowed=True,
+                                derivative_works_allowed=True,
+                                attribution_required=False,
+                                evidence_reference=args.evidence,
+                                reviewer=args.reviewer,
+                                notes=args.notes,
+                            ),
+                        )
+                    elif args.action == "detect-scenes":
+                        result = source_service.detect_scenes(args.id)
+                    elif args.action == "transcribe":
+                        from app.schemas.domain import SourceTranscriptionRequest
+
+                        result = source_service.transcribe(args.id, SourceTranscriptionRequest())
+                    elif args.action == "analyze":
+                        result = source_service.analyze(
+                            args.id,
+                            SourceAnalysisRequest(
+                                profile=args.profile, use_external_ai=args.external_ai
+                            ),
+                        )
+                    elif args.action == "moments":
+                        analysis = source_service.sources.latest_analysis(args.id)
+                        result = (
+                            []
+                            if analysis is None
+                            else [
+                                {
+                                    "id": item.id,
+                                    "start": item.start_seconds,
+                                    "end": item.end_seconds,
+                                    "description": item.description,
+                                }
+                                for item in analysis.moments
+                            ]
+                        )
+                    else:
+                        result = source_service.generate_concepts(
+                            args.id, ConceptGenerationRequest(count=args.count)
+                        )
+                elif args.command == "concept":
+                    source_service = LongFormSourceService(session, settings)
+                    if args.action == "show":
+                        result = source_service.get_concept(args.id)
+                    else:
+                        action = ReviewAction(reviewer=args.reviewer, notes=args.notes)
+                        result = (
+                            source_service.approve_concept(args.id, action)
+                            if args.action == "approve"
+                            else source_service.reject_concept(args.id, action)
+                        )
+                elif args.command == "discover":
                     request = DiscoveryRequest(
                         object_name=args.object_name,
                         process_name=args.process_name,

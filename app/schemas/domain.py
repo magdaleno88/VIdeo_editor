@@ -16,6 +16,7 @@ class Contract(BaseModel):
 class ProviderName(StrEnum):
     PEXELS = "pexels"
     PIXABAY = "pixabay"
+    LONG_FORM = "long_form"
 
 
 class CandidateStatus(StrEnum):
@@ -107,7 +108,7 @@ class ScoreInputs(Contract):
 
 
 class ScoreResult(Contract):
-    method: Literal["metadata_heuristic", "manual", "ai_visual"]
+    method: Literal["metadata_heuristic", "manual", "ai_visual", "source_structural"]
     version: str = "1.0"
     inputs: ScoreInputs
     weights: dict[str, float]
@@ -347,7 +348,7 @@ class VideoVisualAnalysisPayload(Contract):
 
 
 class VideoVisualAnalysis(VideoVisualAnalysisPayload):
-    provider: Literal["gemini"]
+    provider: Literal["gemini", "long_form_local"]
     model: NonEmpty
     analysis_version: NonEmpty
     prompt_version: NonEmpty
@@ -356,7 +357,7 @@ class VideoVisualAnalysis(VideoVisualAnalysisPayload):
 class EvaluationRead(Contract):
     id: int
     candidate_id: int
-    method: Literal["metadata_heuristic", "manual", "ai_visual"]
+    method: Literal["metadata_heuristic", "manual", "ai_visual", "source_structural"]
     scorer_version: str
     ai_provider: str | None
     ai_model: str | None
@@ -975,6 +976,7 @@ class CompositionStrategy(StrEnum):
     CENTER_CROP = "CENTER_CROP"
     FIT = "FIT"
     BLURRED_BACKGROUND = "BLURRED_BACKGROUND"
+    ROI_AWARE = "ROI_AWARE"
 
 
 class TransitionType(StrEnum):
@@ -983,6 +985,7 @@ class TransitionType(StrEnum):
 
 class SourceAudioPolicy(StrEnum):
     MUTED = "MUTED"
+    AMBIENT_REDUCED = "AMBIENT_REDUCED"
 
 
 class RenderStatus(StrEnum):
@@ -1280,6 +1283,274 @@ class PilotProgressRead(Contract):
     elapsed_seconds: float | None
     technical_warnings: list[str]
     high_risk_flags: list[str]
+
+
+class LongFormSourceType(StrEnum):
+    LOCAL_UPLOAD = "LOCAL_UPLOAD"
+    LOCAL_IMPORT = "LOCAL_IMPORT"
+    STOCK_PROVIDER = "STOCK_PROVIDER"
+    AUTHORIZED_REMOTE = "AUTHORIZED_REMOTE"
+
+
+class LongFormSourceStatus(StrEnum):
+    INGESTED = "INGESTED"
+    PREPROCESSED = "PREPROCESSED"
+    ANALYZED = "ANALYZED"
+    AI_ANALYSIS_BLOCKED = "AI_ANALYSIS_BLOCKED"
+    INVALID = "INVALID"
+
+
+class SourceAnalysisStatus(StrEnum):
+    PLANNED = "PLANNED"
+    COMPLETED = "COMPLETED"
+    BLOCKED = "BLOCKED"
+    FAILED = "FAILED"
+
+
+class AnalysisProfile(StrEnum):
+    ECONOMY = "ECONOMY"
+    BALANCED = "BALANCED"
+    QUALITY = "QUALITY"
+
+
+class ShortFormConceptStatus(StrEnum):
+    PROPOSED = "PROPOSED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+class ShortFormClipRole(StrEnum):
+    HOOK = "HOOK"
+    CONTEXT = "CONTEXT"
+    PROCESS = "PROCESS"
+    TRANSFORMATION = "TRANSFORMATION"
+    RESULT = "RESULT"
+
+
+class SourceRightsReview(Contract):
+    rights_status: RightsStatus
+    license_name: NonEmpty | None = None
+    commercial_use_allowed: bool | None = None
+    derivative_works_allowed: bool | None = None
+    attribution_required: bool | None = None
+    attribution_text: Annotated[str, Field(max_length=4000)] | None = None
+    evidence_reference: Annotated[str, Field(max_length=2000)] | None = None
+    reviewer: NonEmpty
+    notes: Annotated[str, Field(max_length=4000)] = ""
+
+    @model_validator(mode="after")
+    def require_verified_evidence(self) -> "SourceRightsReview":
+        if self.rights_status == RightsStatus.VERIFIED:
+            if not self.license_name or not self.evidence_reference:
+                raise ValueError("Verified source rights require a license and evidence reference")
+            if self.commercial_use_allowed is not True or self.derivative_works_allowed is not True:
+                raise ValueError("Verified source rights require commercial and derivative use")
+            if self.attribution_required is None:
+                raise ValueError("Verified source rights require an attribution decision")
+            if self.attribution_required and not self.attribution_text:
+                raise ValueError("Required attribution text is missing")
+        return self
+
+
+class SourceRightsRead(Contract):
+    source_id: int
+    rights_status: RightsStatus
+    license_name: str | None
+    commercial_use_allowed: bool | None
+    derivative_works_allowed: bool | None
+    attribution_required: bool | None
+    attribution_text: str | None
+    evidence_reference: str | None
+    reviewed_by: str | None
+    verified_at: datetime | None
+    notes: str
+
+
+class SourceSceneRead(Contract):
+    id: int
+    source_id: int
+    position: int
+    start_seconds: float
+    end_seconds: float
+    duration_seconds: float
+    representative_frame_path: str | None
+    technical_metadata: dict[str, Any]
+    heuristic_score: float | None
+
+
+class TranscriptSegmentInput(Contract):
+    start_seconds: float = Field(ge=0)
+    end_seconds: float = Field(gt=0)
+    text: Annotated[str, Field(min_length=1, max_length=10000)]
+    confidence: Confidence | None = None
+    language: Annotated[str, Field(min_length=2, max_length=20)] = "und"
+
+    @model_validator(mode="after")
+    def validate_interval(self) -> "TranscriptSegmentInput":
+        if self.end_seconds <= self.start_seconds:
+            raise ValueError("Transcript segment end must be after start")
+        return self
+
+
+class SourceTranscriptionRequest(Contract):
+    provider: NonEmpty = "mock"
+    model: NonEmpty = "fixture"
+    language: Annotated[str, Field(min_length=2, max_length=20)] = "und"
+    segments: list[TranscriptSegmentInput] = Field(default_factory=list, max_length=10000)
+
+
+class TranscriptSegmentRead(TranscriptSegmentInput):
+    id: int
+    position: int
+
+
+class SourceTranscriptRead(Contract):
+    id: int
+    source_id: int
+    provider: str
+    model: str
+    language: str
+    status: str
+    full_text: str
+    created_at: datetime
+    segments: list[TranscriptSegmentRead]
+
+
+class ProcessStageRead(Contract):
+    id: int
+    source_id: int
+    analysis_id: int
+    name: str
+    start_seconds: float
+    end_seconds: float
+    description: str
+    visual_description: str
+    transcript_context: str
+    confidence: float
+    stage_order: int
+
+
+class InterestingMomentRead(Contract):
+    id: int
+    source_id: int
+    analysis_id: int
+    stage_id: int | None
+    start_seconds: float
+    end_seconds: float
+    proposed_start_seconds: float
+    proposed_end_seconds: float
+    description: str
+    visual_interest_score: float
+    educational_value: float
+    transformation_score: float
+    motion_score: float
+    machinery_score: float
+    hook_score: float
+    loop_potential: float
+    confidence: float
+    evidence: list[dict[str, Any]]
+
+
+class SourceAnalysisRequest(Contract):
+    profile: AnalysisProfile = AnalysisProfile.BALANCED
+    use_external_ai: bool = False
+
+
+class SourceAnalysisRead(Contract):
+    id: int
+    source_id: int
+    status: SourceAnalysisStatus
+    profile: AnalysisProfile
+    provider: str
+    model: str
+    version: str
+    detected_process: str | None
+    summary: str
+    confidence: float | None
+    warnings: list[str]
+    budget: dict[str, Any]
+    created_at: datetime
+    stages: list[ProcessStageRead]
+    moments: list[InterestingMomentRead]
+
+
+class ShortFormClipInput(Contract):
+    source_start: float = Field(ge=0)
+    source_end: float = Field(gt=0)
+    output_order: int = Field(ge=0)
+    target_output_duration: float = Field(gt=0, le=60)
+    speed_recommendation: float = Field(1.0, gt=0, le=2)
+    role: ShortFormClipRole = ShortFormClipRole.PROCESS
+    moment_id: int | None = None
+
+    @model_validator(mode="after")
+    def validate_interval(self) -> "ShortFormClipInput":
+        if self.source_end <= self.source_start:
+            raise ValueError("Clip end must be after start")
+        return self
+
+
+class ShortFormClipRead(ShortFormClipInput):
+    id: int
+    concept_id: int
+
+
+class ConceptGenerationRequest(Contract):
+    count: int = Field(3, ge=1, le=5)
+    target_duration: float = Field(45, ge=15, le=60)
+
+
+class ConceptClipPatch(Contract):
+    clips: list[ShortFormClipInput] = Field(min_length=1, max_length=20)
+
+
+class ShortFormConceptRead(Contract):
+    id: int
+    source_id: int
+    analysis_id: int
+    candidate_id: int | None
+    title: str
+    angle: str
+    target_duration: float
+    hook_candidate: str
+    stage_refs: list[int]
+    moment_refs: list[int]
+    coverage: dict[str, Any]
+    status: ShortFormConceptStatus
+    generation_version: str
+    overlap_warning: str | None
+    reviewed_by: str | None
+    reviewed_at: datetime | None
+    review_notes: str
+    created_at: datetime
+    clips: list[ShortFormClipRead]
+
+
+class LongFormSourceRead(Contract):
+    id: int
+    title: str
+    source_type: LongFormSourceType
+    original_filename: str
+    relative_path: str
+    checksum_sha256: str
+    size_bytes: int
+    duration_seconds: float
+    width: int
+    height: int
+    fps: float
+    video_codec: str
+    audio_codec: str | None
+    has_audio: bool
+    container: str
+    rotation: int
+    status: LongFormSourceStatus
+    analysis_status: SourceAnalysisStatus | None
+    created_at: datetime
+    rights: SourceRightsRead
+    scenes: list[SourceSceneRead] = Field(default_factory=list)
+    transcripts: list[SourceTranscriptRead] = Field(default_factory=list)
+    analyses: list[SourceAnalysisRead] = Field(default_factory=list)
+    concepts: list[ShortFormConceptRead] = Field(default_factory=list)
 
 
 class CaptionItemRead(Contract):

@@ -35,6 +35,19 @@ class Settings(BaseSettings):
     ai_video_max_duration_seconds: float = Field(90, gt=0, le=600)
     ai_video_max_file_size_mb: int = Field(40, ge=1, le=100)
     ai_video_analysis_timeout_seconds: float = Field(180, gt=0, le=600)
+    source_storage_root: str = "data/sources"
+    source_upload_max_size_mb: int = Field(4096, ge=1, le=102400)
+    local_source_import_root: str = ""
+    scene_threshold: float = Field(0.30, ge=0.01, le=1)
+    minimum_scene_duration_seconds: float = Field(2.0, ge=0.25, le=60)
+    scene_merge_threshold_seconds: float = Field(1.0, ge=0, le=30)
+    long_video_max_analysis_minutes: int = Field(120, ge=1, le=1440)
+    scene_analysis_max_scenes: int = Field(120, ge=1, le=1000)
+    coarse_frame_budget: int = Field(80, ge=1, le=1000)
+    deep_analysis_max_moments: int = Field(12, ge=1, le=100)
+    deep_analysis_window_seconds: int = Field(20, ge=3, le=120)
+    max_concepts_per_source: int = Field(5, ge=1, le=10)
+    source_ambient_audio_enabled: bool = False
     brave_search_api_key: SecretStr = SecretStr("")
     research_search_provider: Literal["brave"] = "brave"
     gemini_research_model: str = ""

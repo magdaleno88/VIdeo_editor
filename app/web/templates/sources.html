@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Sources · Industrial Content Factory{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div><p class="eyebrow">Primary workflow</p><h1>Long-form sources</h1><p>Ingest licensed industrial video once, then create several independent Reels.</p></div>
+</section>
+<section class="panel">
+  <h2>Add Source Video</h2>
+  <form id="source-upload" class="form-grid">
+    <label>Video file <input type="file" name="source" accept=".mp4,.mov,.mkv,.webm" required></label>
+    <label>Title <input name="title" maxlength="200" placeholder="Optional title"></label>
+    <button type="submit">Upload local video</button>
+    <p id="source-upload-status" class="muted">MP4, MOV, MKV or WebM. The server validates the real container with ffprobe.</p>
+  </form>
+</section>
+<section class="panel">
+  <h2>Sources</h2>
+  <div class="table-wrap"><table><thead><tr><th>Source</th><th>Duration</th><th>Resolution</th><th>Rights</th><th>Analysis</th><th>Scenes</th><th>Moments</th><th>Concepts</th></tr></thead><tbody>
+  {% for source in sources %}
+    <tr><td>{% if source.scenes %}<img class="source-thumb" src="/dashboard/sources/{{ source.id }}/frames/{{ source.scenes[0].id }}" alt="">{% endif %}<a href="/dashboard/sources/{{ source.id }}">#{{ source.id }} · {{ source.title }}</a><br><small>{{ source.original_filename }}</small></td><td>{{ '%.1f'|format(source.duration_seconds) }}s</td><td>{{ source.width }}×{{ source.height }}</td><td><span class="badge">{{ source.rights.rights_status.value }}</span></td><td>{{ source.analysis_status.value if source.analysis_status else 'PENDING' }}</td><td>{{ source.scenes|length }}</td><td>{{ source.analyses[-1].moments|length if source.analyses else 0 }}</td><td>{{ source.concepts|length }}</td></tr>
+  {% else %}<tr><td colspan="8" class="muted">No source videos have been imported.</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+{% endblock %}

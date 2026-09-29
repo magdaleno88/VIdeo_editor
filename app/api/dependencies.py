@@ -40,6 +40,7 @@ from app.services.scoring.ai import AIVideoScorer
 from app.services.scoring.scorers import HeuristicVideoScorer
 from app.services.scripting.runtime import configured_script_service
 from app.services.scripting.service import ScriptGenerationService, ScriptReviewService
+from app.services.sources.service import LongFormSourceService
 from app.services.video.assets import VideoAssetFetcher
 
 
@@ -189,3 +190,7 @@ def get_quality_review(session: SessionDep) -> QualityReviewService:
         CaptionRepository(session),
         PilotRepository(session),
     )
+
+
+def get_source_service(session: SessionDep, settings: SettingsDep) -> LongFormSourceService:
+    return LongFormSourceService(session, settings)

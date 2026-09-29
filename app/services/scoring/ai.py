@@ -1,7 +1,8 @@
 import logging
+from pathlib import Path
 
 from app.core.config import ScoringWeights
-from app.core.errors import AnalysisValidationError, ConflictError
+from app.core.errors import AnalysisError, AnalysisValidationError, ConflictError
 from app.models import ScoreEvaluation
 from app.providers.ai.base import VideoAnalysisProvider
 from app.repositories.candidates import CandidateRepository, apply_score, compare_evaluations
@@ -73,11 +74,38 @@ class AIVideoScorer:
                 )
         try:
             with self.fetcher.fetch(candidate) as asset:
+                logger.info(
+                    "video_asset_prepared_for_ai",
+                    extra={
+                        "candidate_id": candidate.id,
+                        "request_stage": "VIDEO_VALIDATION",
+                        "configured_model": self.provider.model,
+                        "video_mime": asset.mime_type,
+                        "video_size_bytes": asset.size_bytes,
+                        "video_duration_seconds": candidate.duration,
+                        "video_extension": Path(asset.path).suffix.lower(),
+                        "input_method": "FILES_API",
+                    },
+                )
                 payload = self.provider.analyze(asset)
         except Exception as exc:
+            error = exc if isinstance(exc, AnalysisError) else None
             logger.warning(
                 "ai_video_analysis_failed",
-                extra={"candidate_id": candidate.id, "error_type": type(exc).__name__},
+                extra={
+                    "candidate_id": candidate.id,
+                    "error_type": type(exc).__name__,
+                    "request_stage": getattr(error, "stage", None) or "SOURCE_FETCH",
+                    "http_status": getattr(error, "http_status", None),
+                    "gemini_status": getattr(error, "provider_status", None),
+                    "gemini_message": getattr(error, "provider_message", None),
+                    "configured_model": getattr(error, "model", None) or self.provider.model,
+                    "video_mime": getattr(error, "mime_type", None),
+                    "video_size_bytes": getattr(error, "size_bytes", None),
+                    "video_duration_seconds": getattr(error, "duration_seconds", None)
+                    or candidate.duration,
+                    "input_method": getattr(error, "input_method", None),
+                },
             )
             raise
         self._validate_duration(candidate.duration, payload)

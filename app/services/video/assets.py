@@ -22,6 +22,7 @@ class TemporaryVideoAsset:
     path: Path
     mime_type: str
     size_bytes: int
+    duration_seconds: float | None = None
 
 
 class VideoAssetFetcher:
@@ -57,7 +58,12 @@ class VideoAssetFetcher:
             except ValueError:
                 raise AssetUnavailableError("Preview returned an invalid content length") from None
             self._validate_signature(mime, header)
-            yield TemporaryVideoAsset(path=path, mime_type=mime, size_bytes=total)
+            yield TemporaryVideoAsset(
+                path=path,
+                mime_type=mime,
+                size_bytes=total,
+                duration_seconds=candidate.duration,
+            )
         finally:
             if path is not None:
                 with suppress(OSError):
@@ -138,3 +144,29 @@ class VideoAssetFetcher:
             raise UnsupportedMediaError(
                 "Preview content does not match its declared video MIME type"
             )
+
+
+class LongFormAwareVideoAssetFetcher:
+    def __init__(self, remote: VideoAssetFetcher, sources, storage) -> None:
+        self.remote = remote
+        self.sources = sources
+        self.storage = storage
+
+    @contextmanager
+    def fetch(self, candidate: VideoCandidate) -> Iterator[TemporaryVideoAsset]:
+        if candidate.provider != "long_form":
+            with self.remote.fetch(candidate) as asset:
+                yield asset
+            return
+        try:
+            source_id = int(candidate.provider_video_id.split(":", 1)[0])
+        except (TypeError, ValueError):
+            raise AssetUnavailableError("Long-form candidate provenance is invalid") from None
+        source = self.sources.get(source_id)
+        path = self.storage.resolve(source.relative_path)
+        yield TemporaryVideoAsset(
+            path=path,
+            mime_type="video/" + path.suffix.lstrip(".").replace("mov", "quicktime"),
+            size_bytes=source.size_bytes,
+            duration_seconds=source.duration_seconds,
+        )

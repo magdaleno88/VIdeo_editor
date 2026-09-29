@@ -77,6 +77,8 @@ class TechnicalResearchService:
         if candidate.status in (CandidateStatus.PROCESSING, CandidateStatus.READY):
             raise ConflictError("Production candidates cannot start technical research")
         evaluation = self.candidates.latest_by_method(candidate_id, "ai_visual")
+        if evaluation is None:
+            evaluation = self.candidates.latest_by_method(candidate_id, "source_structural")
         if evaluation is None or not evaluation.analysis:
             raise ConflictError("AI visual analysis is required before technical research")
         analysis = VideoVisualAnalysis.model_validate(evaluation.analysis)

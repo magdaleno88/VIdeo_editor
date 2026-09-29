@@ -10,9 +10,11 @@ from app.repositories.candidates import CandidateRepository
 from app.repositories.narrations import NarrationRepository
 from app.repositories.renders import RenderRepository
 from app.repositories.scripts import ScriptRepository
+from app.repositories.sources import SourceRepository
 from app.services.rendering.service import EditPlanService, RenderService
 from app.services.rendering.storage import NarrationFileResolver, RenderStorage
-from app.services.video.assets import VideoAssetFetcher
+from app.services.sources.storage import SourceStorage
+from app.services.video.assets import LongFormAwareVideoAssetFetcher, VideoAssetFetcher
 
 
 def edit_plan_service(settings: Settings, session: Session) -> EditPlanService:
@@ -29,6 +31,7 @@ def edit_plan_service(settings: Settings, session: Session) -> EditPlanService:
         max_speed=settings.render_max_playback_speed,
         pre_roll_ms=settings.render_clip_pre_roll_ms,
         post_roll_ms=settings.render_clip_post_roll_ms,
+        source_ambient_audio_enabled=settings.source_ambient_audio_enabled,
     )
 
 
@@ -48,10 +51,18 @@ def configured_render_service(settings: Settings, session: Session) -> Iterator[
             NarrationRepository(session),
             RenderRepository(session),
             renderer,
-            VideoAssetFetcher(
-                client,
-                settings.ai_video_max_file_size_mb * 1024 * 1024,
-                settings.ai_video_max_duration_seconds,
+            LongFormAwareVideoAssetFetcher(
+                VideoAssetFetcher(
+                    client,
+                    settings.ai_video_max_file_size_mb * 1024 * 1024,
+                    settings.ai_video_max_duration_seconds,
+                ),
+                SourceRepository(session),
+                SourceStorage(
+                    settings.source_storage_root,
+                    settings.source_upload_max_size_mb * 1024 * 1024,
+                    settings.ffprobe_binary,
+                ),
             ),
             RenderStorage(settings.render_storage_root),
             NarrationFileResolver(settings.narration_storage_root),

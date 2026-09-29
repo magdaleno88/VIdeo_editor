@@ -22,4 +22,5 @@ data/*
 data/audio/
 data/captions/
 data/renders/
+data/sources/
 

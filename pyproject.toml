@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "industrial-content-factory"
 version = "0.1.0"
-description = "Rights-aware industrial video discovery and human review"
+description = "Rights-aware long-form to short-form industrial content factory"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

@@ -1,6 +1,6 @@
 # Roadmap
 
-Phases 1–8B are implemented. Later phases are architectural plans, not executable or simulated integrations.
+Phases 1–9D are implemented for local operation. External long-form multimodal analysis and transcription providers remain explicit provider boundaries and are not claimed live-verified.
 
 | Phase | Module | Completion criteria |
 | --- | --- | --- |
@@ -13,8 +13,12 @@ Phases 1–8B are implemented. Later phases are architectural plans, not executa
 | 7 | Subtitles and graphics | Script-derived timed captions, ASS/SRT, verified factual overlays, reusable styles, mobile safe areas, optional branding, preview, versioned decorated MP4 and human review. **Implemented.** |
 | 8A | Local operational review dashboard | Server-rendered candidate/pipeline views, review queue, safe media playback, timestamp navigation, explicit actions, CSRF-protected review forms and local-only operation. **Implemented.** |
 | 8B | Real pilot and quality validation | Pilot batches, complete progress/blocker resolution, structured final quality scoring, rejection routing, version/call/time summaries and known-ID MP4/SRT downloads. **Implemented for local operation.** |
+| 9A | Long-form ingestion | Streamed upload, confined optional filesystem import, persistent atomic source storage, ffprobe metadata, SHA-256 reuse and source rights. **Implemented.** |
+| 9B | Hierarchical source analysis | Local scene detection, representative frames, transcript structure, budget preview, process stages and interesting moments. External AI remains explicit. **Implemented locally; external provider not verified.** |
+| 9C | Short-form extraction | Multiple bounded concepts, ordered non-contiguous clips, overlap warnings, manual timing/order changes and human approval. **Implemented.** |
+| 9D | Existing-pipeline integration | Rights-inherited derived candidates and structural visual evidence feed the established research, script, TTS, render, caption and review services. **Implemented.** |
 | 8C | Shared-operation hardening | Authentication, authorization roles, per-user sessions/CSRF, backups and production deployment controls. Planned; required before remote access. |
-| 9 | Publishing integrations | QA-gated exports; Facebook Reels first, then Instagram/TikTok/YouTube Shorts; platform authorization, idempotency, schedules and publication receipts. |
-| 10 | Analytics and performance feedback | Versioned metrics, retention/completion context, controlled experiments and audited feedback into scoring. |
+| 10 | Publishing integrations | Deferred. QA-gated exports would require separate authorization, idempotency and publication receipts. |
+| 11 | Analytics and performance feedback | Versioned metrics, retention/completion context, controlled experiments and audited feedback into scoring. |
 
 Before introducing background jobs, add durable job states, idempotency and an outbox. n8n can orchestrate the internal API after these contracts exist. Jobs must recheck rights and approval at execution time. Media storage, backups, real PostgreSQL tests, authentication and quota coordination become prerequisites for shared operation; they are not implied by local MVP readiness.

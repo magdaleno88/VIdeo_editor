@@ -267,7 +267,10 @@ class DashboardService:
         )
         narrations = [item for script in scripts for item in script.narrations]
         final_renders = [item for plan in caption_plans for item in plan.final_renders]
-        latest_ai = next((item for item in evaluations if item.method == "ai_visual"), None)
+        latest_ai = next(
+            (item for item in evaluations if item.method in ("ai_visual", "source_structural")),
+            None,
+        )
         latest_script = scripts[0] if scripts else None
         approved_script = next(
             (item for item in scripts if item.status == ScriptStatus.APPROVED), None

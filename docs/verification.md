@@ -8,13 +8,13 @@ Verified on 2026-09-28 in Windows PowerShell, from the project root.
 - Windows 10 Pro, version 25H2 (build 26200.9445), running PowerShell 7.6.5.
 - The system Python launcher reported no registered Python installations. The available Codex runtime at `C:/Users/USER/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe` was used only to create the virtual environment.
 - Runtime/development dependencies were installed into that virtual environment. Exact installed package versions are recorded in `requirements.lock`; project constraints are in `pyproject.toml`.
-- SQLite development database migrated to revision `0008` at `data/industrial_content_factory.db`.
+- SQLite development database migrated to revision `0009` at `data/industrial_content_factory.db`.
 
 ## Results
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Offline unit/integration suite | `.\.venv\Scripts\python.exe -m pytest -q --cov=app --cov-report=term-missing` | **195 passed**, 1 upstream deprecation warning; **90% statement coverage** for `app` (6,285 statements, 598 not covered) |
+| Offline unit/integration suite | `.\.venv\Scripts\python.exe -m pytest -q --cov=app --cov-report=term-missing` | **212 passed**, 1 upstream deprecation warning; **89% statement coverage** for `app` (7,442 statements, 807 not covered) |
 | Phase 3 focused suite | `.\.venv\Scripts\python.exe -m pytest -q tests/test_research.py tests/test_research_providers.py tests/test_research_api_cli.py` | **21 passed**, 1 upstream deprecation warning |
 | Phase 4 focused suite | `.\.venv\Scripts\python.exe -m pytest -q tests/test_scripting.py tests/test_scripting_provider.py tests/test_scripting_api_cli.py` | **9 passed**, 1 upstream deprecation warning |
 | Phase 5 focused suite | `.\.venv\Scripts\python.exe -m pytest -q tests/test_narration.py tests/test_elevenlabs_tts.py` | **7 passed**, 1 upstream deprecation warning |
@@ -29,6 +29,8 @@ Verified on 2026-09-28 in Windows PowerShell, from the project root.
 | Local FFmpeg synthetic render | `.\.venv\Scripts\python.exe scripts/live_render_smoke.py` | **LOCAL FFMPEG VERIFIED:** actual FFmpeg render and ffprobe validation produced `360x640`, `3.00s`, `30.00fps`, `h264/aac`, container `mov,mp4,m4a,3gp,3g2,mj2` |
 | Local caption render | `.\.venv\Scripts\python.exe scripts/live_caption_smoke.py` | **LOCAL CAPTION RENDER VERIFIED:** actual libass/FFmpeg render produced `360x640`, `3.00s`, `30.00fps`, H.264/AAC plus a PNG preview |
 | Local dashboard and pilot HTTP/UI | `.\.venv\Scripts\python.exe scripts/live_dashboard_smoke.py` | **LOCAL DASHBOARD VERIFIED** and **LOCAL PILOT WORKFLOW VERIFIED:** actual Uvicorn loopback server exercised a five-candidate synthetic batch, structured quality approval and known-ID MP4/SRT downloads |
+| Long-form ingest, scenes and render | `.\.venv\Scripts\python.exe scripts/live_long_form_smoke.py` | **LOCAL LONG-FORM INGEST VERIFIED**, **LOCAL SCENE DETECTION VERIFIED** and **LOCAL LONG-FORM MULTI-CLIP RENDER VERIFIED:** a real 60-second H.264/AAC source produced six persistent frames, three concepts and a validated 9-second vertical output from windows at 1–4, 21–24 and 51–54 seconds |
+| Long-form dashboard | `.\.venv\Scripts\python.exe scripts/live_long_form_dashboard_smoke.py` | **LOCAL LONG-FORM DASHBOARD VERIFIED:** streamed upload plus source list, detail, player and timeline rendered against a migrated temporary database |
 | PostgreSQL offline migration generation | `python -m alembic upgrade head --sql` with a PostgreSQL URL | **Not verified:** existing revision `0002` performs a result-dependent data backfill that Alembic offline mode cannot execute |
 
 The suite includes complete discovery-to-approval workflows through both API and CLI with synthetic Pexels/Pixabay responses. Phase 2 coverage uses mocked video transport and Gemini clients to verify structured success, all eight ratings, weighted totals, evidence/version persistence, manual comparison, reuse, force, reweighting without another AI call, missing configuration, model and schema failures, expired/oversized/invalid assets, SSRF controls and cleanup after success or failure.
@@ -46,6 +48,8 @@ Phase 7 tests cover the approved-raw gate, script/narration linkage, final-timel
 Phase 8A tests cover the operational home, filtered/paginated candidates, full candidate detail, pipeline state rendering, review queue, final-render review, timestamp controls, native media routes and MIME types, byte ranges, unknown IDs, relative/absolute/encoded traversal attempts, prerequisite-gated buttons, absence of paid work during page loads, HTML escaping, explicit preview generation, CSRF enforcement and approve/reject forms. No external service is contacted.
 
 Phase 8B tests cover a five-candidate batch, full stage resolution, explicit blockers and next actions, structured approval/rejection validation, 1–5 scores, checklist persistence, rejection-to-revision routing, call/version counters, batch summaries and safe known-ID MP4/SRT downloads. The HTTP smoke uses synthetic candidate records and therefore does not represent five reviewed real-source videos.
+
+Phase 9 tests cover source-rights validation, timestamp bounds, non-chronological story order, scene merge/cap behavior, display-rotation normalization, storage confinement, initial extension filtering and the complete real local smoke. The smoke streams and probes a generated 60-second source, verifies checksum reuse, extracts six representative frames, stores a timestamped mock transcript, creates stages/moments and three concepts, approves two independent derived candidates, and performs a real FFmpeg multi-window render.
 
 ## Local FFmpeg verification
 
@@ -94,13 +98,17 @@ The module CLI was also executed directly for query generation, an empty top-can
 - **LOCAL CAPTION RENDER VERIFIED:** real FFmpeg/libass burned the generated ASS captions and hook into a separate MP4; ffprobe validation and preview generation succeeded.
 - **LOCAL DASHBOARD VERIFIED:** an actual loopback Uvicorn server served the operational UI and known media assets, and a CSRF-protected human review succeeded over HTTP.
 - **LOCAL PILOT WORKFLOW VERIFIED:** a five-candidate synthetic/local batch, full progress page, structured final quality approval, persisted `READY` state and known-ID MP4/SRT downloads succeeded over actual loopback HTTP.
+- **LOCAL LONG-FORM INGEST VERIFIED:** real streamed bytes were atomically persisted, probed, checksummed and reused on duplicate upload.
+- **LOCAL SCENE DETECTION VERIFIED:** real FFmpeg scene detection found six hard-cut scenes in a 60-second source and extracted six representative JPEGs.
+- **LOCAL LONG-FORM MULTI-CLIP RENDER VERIFIED:** real FFmpeg concatenated three non-contiguous source windows into a 360x640 H.264/AAC output validated by ffprobe.
+- **LOCAL LONG-FORM DASHBOARD VERIFIED:** source list, upload, detail, native player and empty-state timeline rendered locally.
 
 ## Known limits of this verification
 
 - **No live authenticated Pexels/Pixabay searches:** credentials were not supplied. Adapter request shapes and normalization were checked against official documentation and offline fixtures.
 - **No live authenticated Brave search:** credentials were not supplied. Search behavior is verified at the provider boundary with mocked HTTP transport.
 - **No live PostgreSQL server:** revisions `0003` through `0006` use portable SQLAlchemy types, but the complete offline chain cannot be rendered because the already-applied `0002` migration reads backfill rows. A PostgreSQL upgrade still needs testing against a disposable server.
-- **Live Gemini for Phases 2–4 was not verified:** no real API key, paid call, remote video upload, quota or billing behavior was exercised. Provider behavior is offline-verified with the official SDK installed.
+- **Gemini long-form analysis is not verified:** no paid long-form request succeeded. The most recent live Gemini video attempt returned HTTP 402 `RESOURCE_EXHAUSTED` because prepaid credits were depleted; the sanitized stage/status diagnostics are preserved and the local source remains valid.
 - **Live ElevenLabs narration was not verified:** no real API key, paid call, voice-license assertion, quota or billing behavior was exercised. The service stores only safe provider metadata and never logs the API key.
 - The FFmpeg verification uses generated local media only. It does not verify provider download, live narration, source-cache behavior, publishing or production deployment.
 - The real caption smoke uses a compact 360x640 synthetic clip for speed. Production 1080x1920 rules, cache/versioning, factual overlays and branding are covered offline; optional branding with a real logo and custom font still needs project-specific visual review.

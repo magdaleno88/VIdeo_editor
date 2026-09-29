@@ -120,6 +120,8 @@ class ScriptGenerationService:
         if dossier is None or dossier.status != ResearchStatus.VERIFIED:
             raise ConflictError("A human-verified research dossier is required for scripting")
         evaluation = self.candidates.latest_by_method(candidate_id, "ai_visual")
+        if evaluation is None:
+            evaluation = self.candidates.latest_by_method(candidate_id, "source_structural")
         if evaluation is None or not evaluation.analysis:
             raise ConflictError("AI visual analysis is required for scripting")
         analysis = VideoVisualAnalysis.model_validate(evaluation.analysis)
